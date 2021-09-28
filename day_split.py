@@ -10,20 +10,8 @@ import warnings
 import numpy as np
 import multiprocessing as mp
 import time
+from seisloc.sta import load_sta
 warnings.filterwarnings("ignore")
-
-def load_sta(sta_file):
-    sta_dict={}
-    with open(sta_file,'r') as f:
-        for line in f:
-            line = line.rstrip()
-            net,sta,_lon,_lat,_ele,label=re.split(" +",line)
-            if net not in sta_dict:
-                sta_dict[net]={}
-            if sta not in sta_dict[net]:
-                sta_dict[net][sta] = []
-            sta_dict[net][sta].append([float(_lon),float(_lat),float(_ele)])
-    return sta_dict
 
 def pos_write(o_folder,sta_dict):
     '''
@@ -36,9 +24,9 @@ def pos_write(o_folder,sta_dict):
     sta = st[0].stats.station
     for sac in sac_list:
         st=obspy.read(sac)
-        st[0].stats.sac.stla=sta_dict[net][sta][0][0]
-        st[0].stats.sac.stlo=sta_dict[net][sta][0][1]
-        st[0].stats.sac.stel=sta_dict[net][sta][0][2]
+        st[0].stats.sac.stla=sta_dict[net][sta][0]
+        st[0].stats.sac.stlo=sta_dict[net][sta][1]
+        st[0].stats.sac.stel=sta_dict[net][sta][2]
         st[0].write(sac)
         
 def time_file_list(i_path,folder):

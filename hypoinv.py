@@ -75,7 +75,10 @@ def phs_add_mag(phs_file,mag_file):
             f.write(line+"\n")
 
 
-def load_y2000(y2000_file):
+def load_y2000(y2000_file,print_line=False):
+    """
+    If print_line is true, each phase line will be printed out
+    """
     phs_cont = []
     with open(y2000_file,"r") as f1:
         for line in f1:
@@ -86,6 +89,8 @@ def load_y2000(y2000_file):
 
     print(">>> Loading phases ... ")
     for line in tqdm(phs_cont):
+        if print_line:
+            print(line)
         f_para = line[0:2]     # first two characters as first parameter(f_para)
         if re.match("\d+",f_para):    # event line
             event_count += 1
@@ -93,11 +98,35 @@ def load_y2000(y2000_file):
             _hr=line[8:10];_minute=line[10:12];
             yr = int(_yr); mo = int(_mo); day=int(_day); hr=int(_hr);minute=int(_minute);
             _seconds=line[12:14]+"."+line[14:16]
-            evla=float(line[16:18])+(float(line[19:21])+float(line[21:23])*0.01)/60
-            evlo=float(line[23:26])+(float(line[27:29])+float(line[29:31])*0.01)/60
-            evdp=float(line[32:36])/100; 
-           # _,no,year,month,day,o_time,ab_sec,res,evla,evlo,evdp,mag,mag_res,np,ns,nt,sta_gap=re.split(" +",line)
-            #e_hr,e_min,e_seconds=re.split(":",o_time)
+            lat_deg = int(line[16:18]) # short of latitude degree
+            try:
+                lat_min_int = int(line[19:21]) 
+            except:
+                lat_min_int = 0
+            try:
+                lat_min_decimal = int(line[21:23])*0.01
+            except:
+                lat_min_decimal = 0
+            lat_min = lat_min_int + lat_min_decimal
+            evla = lat_deg + lat_min/60
+
+            lon_deg = int(line[23:26]) # short of longitude degree
+            try:
+                lon_min_int = int(line[27:29])
+            except:
+                lon_min_int = 0
+            try:
+                lon_min_decimal = int(line[29:31])*0.01
+            except:
+                lon_min_decimal = 0
+            lon_min = lon_min_int + lon_min_decimal  # short of longitude minute    
+            evlo = lon_deg + lon_min/60
+
+            try:
+                evdp=float(line[32:36])/100
+            except:
+                evdp = 0
+
             e_secs = float(_seconds)
             e_time = UTCDateTime(yr,mo,day,hr,minute,0)+e_secs
 

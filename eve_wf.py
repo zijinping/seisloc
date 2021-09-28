@@ -9,21 +9,11 @@ import matplotlib.pyplot as plt
 from seisloc.utils import read_sac_ref_time,get_st
 from seisloc.geometry import spherical_dist
 from seisloc.hypoinv import load_y2000
+from seisloc.sta import load_sta
 import numpy as np
 from tqdm import tqdm
 import pickle
 import logging
-
-def load_sta(sta_file):
-    sta_dict = {}
-    with open(sta_file,'r') as f:
-        for line in f:
-            line = line.rstrip()
-            net,sta,_lon,_lat,_ele = re.split(" +",line)[:5]
-            sta_dict[sta] = [float(_lon),float(_lat),int(_ele),net]
-    f.close()
-    return sta_dict
-
 
 def cut_eve_wf(phs_dict,sta_dict,src_root,tar_root,tb,te):
     eve_list = phs_dict.keys()
@@ -55,13 +45,14 @@ def cut_eve_wf(phs_dict,sta_dict,src_root,tar_root,tb,te):
                     out_file = os.path.join(tar_root,str_day,eve,f"{sta}.{chn}")
                     trace.write(out_file,format="SAC")
                     sac = SACTrace.read(out_file,headonly=True)
+                    net = sac.knetwk
                     sac.lovrok = 1
                     sac.evlo = phs_dict[eve]["eve_loc"][0]
                     sac.evla = phs_dict[eve]["eve_loc"][1]
                     sac.evdp = phs_dict[eve]["eve_loc"][2]
-                    sac.stlo = sta_dict[sta][0]
-                    sac.stla = sta_dict[sta][1]
-                    sac.stel = sta_dict[sta][2]
+                    sac.stlo = sta_dict[net][sta][0]
+                    sac.stla = sta_dict[net][sta][1]
+                    sac.stel = sta_dict[net][sta][2]
                     sac.nzyear = e_time.year
                     sac.nzjday = e_time.julday
                     sac.nzhour = e_time.hour

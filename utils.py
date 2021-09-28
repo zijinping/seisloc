@@ -17,7 +17,69 @@ from obspy import UTCDateTime
 import pandas as pd
 from obspy.geodetics import gps2dist_azimuth
 
-root_path="/NAS1/Sichuan_data/continous_waveform_sac/"
+def extract_set_info(pth,sta_file,depth=2):
+    """
+    Parameters:
+        pth: path for the folder to work on
+        depth: 1 or 2, 1 means pth/files, 2 means pth/folder/files
+        
+    Return:
+        A setinfo dictionary containing keys:
+        "s_times": sorted starttime list
+        "e_times": sorted endtime list
+        "netstas": network and station list in format <net+sta>
+        "center" : mean longitude and latitude of stations,intended for tele-
+                   event selection.
+    """
+    setinfo = {}
+    sta_dict = load_sta(sta_file)
+    s_times = []
+    e_times = []
+    netstas = []
+    sta_lons = []
+    sta_lats = []
+    if depth == 2:                    # strcture: pth/folder/seis_file
+        for item in os.listdir(pth):
+            if os.path.isdir(os.path.join(pth,item)):
+                for file in os.listdir(os.path.join(pth,item)):
+                    try:
+                        st = obspy.read(os.path.join(pth,item,file),headonly=True)
+                        for tr in st:
+                            net = tr.stats.network
+                            sta = tr.stats.station
+                            netsta = net+sta
+                            if netsta not in netstas:
+                                netstas.append(netsta)
+                                sta_lons.append(sta_dict[net][sta][0])
+                                sta_lats.append(sta_dict[net][sta][1])          
+                            s_times.append(tr.stats.starttime)
+                            e_times.append(tr.stats.endtime)
+                    except:           # not seis file
+                        pass
+    if depth == 1:                    # strcture: pth/seis_file
+        for item in os.listdir(pth):
+            if os.path.isfile(os.path.join(pth,item)):
+                try:
+                    st = obspy.read(os.path.join(pth,item,file),headonly=True)
+                    for tr in st:
+                        net = tr.stats.network
+                        sta = tr.stats.station
+                        netsta = net+sta
+                        if netsta not in netstas:
+                            netstas.append(netsta)
+                            sta_lons.append(sta_dict[net][sta][0])
+                            sta_lats.append(sta_dict[net][sta][1])  
+                        s_times.append(tr.stats.starttime)
+                        e_times.append(tr.stats.endtime)
+                except:               # not seis file
+                    pass
+
+    setinfo["s_times"] = sorted(s_times)
+    setinfo["e_times"] = sorted(e_times)
+    setinfo["netstas"] = netstas
+    print(sta_lons)
+    setinfo["center"] = [np.mean(sta_lons),np.mean(sta_lats)] 
+    return setinfo
 
 def load_sta(sta_file):
     sta_dict={}
@@ -28,8 +90,7 @@ def load_sta(sta_file):
             if net not in sta_dict:
                 sta_dict[net]={}
             if sta not in sta_dict[net]:
-                sta_dict[net][sta] = []
-            sta_dict[net][sta].append([float(_lon),float(_lat),float(_ele),label])
+                sta_dict[net][sta] = [float(_lon),float(_lat),float(_ele),label]
     return sta_dict
 
 def draw_vel(ax,dep_list,vel_list,color='k',linestyle='-'):
