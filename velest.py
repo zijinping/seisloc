@@ -1,7 +1,8 @@
-import re
 import matplotlib.pyplot as plt
+import re
 import numpy as np
-from cuhk_seis.utils import draw_vel,load_sta
+from seisloc.utils import draw_vel
+from seisloc.sta import load_sta
 
 def load_cnv(cnv_file="velout.cnv"):
     """
@@ -43,8 +44,10 @@ def load_cnv(cnv_file="velout.cnv"):
 
 def cnv_add_evid(vel_in,vel_out="velout.cnv",output_file="velout.cnv.id"):
     """
-    The input VELEST cnv file contains event id information which could be processed by VELEST modified by Hardy ZI.
-    However the output processed by VELEST contains no event id information. So extrac process is need.
+    The input VELEST cnv file contains event id information which could be 
+    processed by VELEST modified by Hardy ZI.
+    The output processed by VELEST contains no event id information,
+    needs to be addded.
     """
     with open(vel_in,"r") as f:
         vel_in_cont = f.readlines()
@@ -90,11 +93,17 @@ def velestmod2ddinv(in_file="velout.mod"):
     f.write("-9\n")
     f.close()
 
-    inv_out_file = in_file+".inv"
-    f = open(inv_out_file,'w')
-    f.write("Hardy ZI model\n")
+    inv_P_file = in_file+".Pinv"
+    f = open(inv_P_file,'w')
+    f.write("Velest generated model\n")
     for i in range(len(P_vels)):
         f.write(format(P_vels[i],"5.2f")+" "+format(P_lays[i],'5.2f')+'\n')
+    f.close()
+    inv_S_file = in_file+".Sinv"
+    f = open(inv_S_file,'w')
+    f.write("Velest generated model\n")
+    for i in range(len(S_vels)):
+        f.write(format(S_vels[i],"5.2f")+" "+format(S_lays[i],'5.2f')+'\n')
     f.close()
 
 def load_velest_mod(in_file):
@@ -151,11 +160,11 @@ class Vel_iter():
         axs.set_ylabel("Depth (km)")
         axs.set_title("Iteration Result",fontsize=16)
         
-    def dd_vpvs_format(self):
+    def dd_vpvs_format(self,dd_version="1"):
         """
         output hypoDD format velocity lines.
         """
-        try:
+        if dd_version=="2":
             if len(self.P_deps) != len(self.S_deps):
                 raise Exception("The P layers qty not equal the S layers qty")
             if self.P_deps != self.S_deps:
@@ -170,14 +179,36 @@ class Vel_iter():
                 poisson_ratio = self.P_vels[i]/self.S_vels[i]
                 print("%6.3f "%poisson_ratio,end="")
             print("-9\n")
-        except:
-            raise Exception("Please check whether this iteration has vp and vs attributes")
+        if dd_version=="1":
+            for dep in self.P_deps:
+                print("%6.3f "%dep,end="")
+            print("\n",end="")
+            for vp in self.P_vels:
+                print("%6.3f "%vp,end="")
+            print("\n",end="")
 
+    def gen_inv_mod_files(self):
+        inv_P_file = self.name+".Pinv"
+        f = open(inv_P_file,'w')
+        f.write("Velest generated model\n")
+        for i in range(len(self.P_vels)):
+            f.write(format(self.P_vels[i],"5.2f")+" "+format(self.P_deps[i],'5.2f')+'\n')
+        f.close()
+        inv_S_file = self.name+".Sinv"
+        f = open(inv_S_file,'w')
+        f.write("Velest generated model\n")
+        for i in range(len(self.S_vels)):
+            f.write(format(self.S_vels[i],"5.2f")+" "+format(self.S_deps[i],'5.2f')+'\n')
+        f.close()
+        
     def gen_del_files(self,sta_file="/home/zijinping/Desktop/zijinping/resources/stations/sta_sum_202109.txt"):
+        """
+        Generate station delay files
+        """
         sta_dict = load_sta(sta_file)
-        iter_name = self.iter_name
-        fp = open(iter_name+"_P.dly","w")
-        fS = open(iter_name+"_S.dly","w")
+        iter_name = self.name
+        fp = open("P.dly","w")
+        fs = open("S.dly","w")
         for sta in self.P_dly.keys():
             # check whether there are stations in different network with the same name
             count = 0
@@ -210,6 +241,8 @@ class Velest():
         self.load_i_mod()
         self.iters = []
         self.load_log()
+    def __getitem__(self,index):
+        return self.iters[index]
     def load_i_mod(self):
         tmp = load_velest_mod(self.i_mod)
         self.i_P_deps = tmp[0]

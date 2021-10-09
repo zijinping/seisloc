@@ -1,8 +1,10 @@
 from obspy import UTCDateTime
+from obspy.geodetics import gps2dist_azimuth
 import re
 from seisloc.hypoinv import load_sum_rev,load_sum
 import os
 import glob
+from tqdm import tqdm
 
 def event_sel(evid_list=[],event_dat="event.dat",event_sel="event.sel"):
     '''
@@ -144,10 +146,12 @@ def gen_dtcc(sta_list,sum_file="out.sum",work_dir="./",cc_threshold=0.7,min_link
                     for line in f:
                         line = line.rstrip()
                         path1,arr1,_,path2,arr2,_,cc,aa=re.split(" +",line.rstrip())
-                        eve_folder1 = re.split("\/",path1)[1] # folder name of event
+                        tmp = os.path.split(path1)[0]
+                        eve_folder1 = os.path.split(tmp)[1]
                         evid1 = sum_rev[eve_folder1][0]
                         arr1 =float(arr1)                     # arrival time
-                        eve_folder2 = re.split("\/",path2)[1]
+                        tmp = os.path.split(path2)[0]
+                        eve_folder2 = os.path.split(tmp)[1]
                         evid2 = sum_rev[eve_folder2][0]
                         if evid1 not in evid_list:
                             evid_list.append(evid1)
@@ -447,7 +451,7 @@ def run_dd(base_dir="./",work_dir='hypoDD',inp_file="hypoDD.inp"):
     subprocess.run(["hypoDD",inp_file])
     os.chdir(base_dir)
 
-def dd_random(base_folder="hypoDD",times=10,samp_ratio=0.75,cores=2):
+def dd_bootstrap(base_folder="hypoDD",times=10,samp_ratio=0.75,cores=2):
     """
     Randomly run hypoDD with randomly selected events to show the results variation
     Parameters:

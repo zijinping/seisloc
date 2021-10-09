@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#-----------------------------------------------------------------------------
 # coding: utf-8
 # author: Hardy ZI
 # history:
@@ -11,21 +11,21 @@ from obspy import UTCDateTime
 import os
 import sys
 import time
-from cuhk_seis.reloc_related import load_DD
+from seisloc.dd import load_DD
 import time
-from cuhk_seis.utils import WY_para
+from seisloc.geopara import WY_para
 from tqdm import tqdm
 
 
-def phs2vel(phs_file,mag_threshold=-9,qty_limit=None):
+def arc2cnv(arc_file,mag_threshold=-9,qty_limit=None):
     """
-    convert *.phs file into velest format file
+    convert y2000 archieve file into velest format file
     """
     count = 0
     cont = []    # Save the content of the phase file
     cont_sel = [] # content selected
     out_dict = {}     # output content
-    with open(phs_file,'r') as f:
+    with open(arc_file,'r') as f:
         for line in f:
             cont.append(line.rstrip())
     f.close()
@@ -89,7 +89,7 @@ def phs2vel(phs_file,mag_threshold=-9,qty_limit=None):
             pha_record = sta.ljust(5," ")+pha+"1"+format(diff_time,'6.2f')
             out_dict[e_label]["phase"].append(pha_record)
     print(f"# Total {count} events!")
-    cnv_file = phs_file+".cnv"
+    cnv_file = arc_file+".cnv"
     f = open(cnv_file,'w')
     for key in out_dict.keys():      # Loop for each event
         e_lat = out_dict[key]["e_lat"]
@@ -118,7 +118,7 @@ def phs2vel(phs_file,mag_threshold=-9,qty_limit=None):
     f.write("9999")              # indicates end of file for VELEST
     f.close()
 
-    f = open(phs_file+".sel",'w')
+    f = open(arc_file+".sel",'w')
     for line in cont_sel:
         f.write(line+"\n")
     f.close()
@@ -140,7 +140,7 @@ def dd2fdsn(in_file,subset=None):
     f=open(out_file,'w')
     f.write("#EventID|Time|Latitude|Longitude|Depth/km|Author|Catalog|Contributor|ContributorID|MagType|Magnitude|MagAuthor|EventLocationName\n")
     f.close()
-    eve_dict,df = load_hypoDD(reloc_file=in_file)
+    eve_dict,df = load_DD(reloc_file=in_file)
     T1 = time.time()
     print("%f seconds passed to load hypoDD file" %(T1-T0))
     eve_list = list(eve_dict)
@@ -586,11 +586,11 @@ def sc2phs(file_list=[],region_condition="-9/-9/-9/-9",mag_condition=-9):
                 except:
                     continue
             if p_type =="Pg":
-                part1 = sta.ljust(5," ")+net+"  SHZ IPU1"+e_year+e_month+e_day+p_hour+p_minute+" "+str(int(p_seconds*100)).zfill(4)
+                part1 = sta.ljust(5," ")+net+"  SHZ IPU2"+e_year+e_month+e_day+p_hour+p_minute+" "+str(int(p_seconds*100)).zfill(4)
                 part2 = str(int(p_residual*100)).rjust(4," ")+"  0    0   0   0"
                 output_content.append(part1+part2)
             elif p_type == "Sg":
-                part1 = sta.ljust(5," ")+net+"  SHZ    4"+e_year+e_month+e_day+p_hour+p_minute+"    0   0  0 "
+                part1 = sta.ljust(5," ")+net+"  SHZ    2"+e_year+e_month+e_day+p_hour+p_minute+"    0   0  0 "
                 part2 = str(int(p_seconds*100)).zfill(4)+"ES 0"+str(int(p_residual*100)).rjust(4," ")
                 output_content.append(part1+part2)
     output_content.append(format(str(event_id).rjust(72," ")))
@@ -599,7 +599,7 @@ def sc2phs(file_list=[],region_condition="-9/-9/-9/-9",mag_condition=-9):
             f.write(line+"\n")
     print("  ") #for window output
 
-def real2phs(input_file,phase_filt=8,region_filt=[0,0,0,0]):
+def real2arc(input_file,phase_filt=8,region_filt=[0,0,0,0]):
     """
     change from REAL association result to the file that could be read by hypo-inverse
     """
@@ -666,7 +666,7 @@ def real2phs(input_file,phase_filt=8,region_filt=[0,0,0,0]):
                         format(e_hr,"0>2d")+format(e_min,"0>2d")+format(e_sec*100,"0>4.0f")+\
                         format(lat_i,"0>2d")+" "+format(lat_f*60*100,"0>4.0f")+\
                         format(lon_i,"0>3d")+"E"+format(lon_f*60*100,"0>4.0f")+\
-                        format(dep*100,">5.0f")+format(mag*100,"0>3.0f")+"\n")
+                        format(dep*100,">5.0f")+format(mag*100,"0>3.0f")+"\n")                
                     event_id = event_id + 1
             else:
                 if filt_status == True:
@@ -686,13 +686,13 @@ def real2phs(input_file,phase_filt=8,region_filt=[0,0,0,0]):
                     p_sec_f = p_time.microsecond/1000000 #float part
                     #write in content
                     if p_type=="P":
-                        f.write(format(sta,"<5s")+format(net,"2s")+"  SHZ IPU1"+\
+                        f.write(format(sta,"<5s")+format(net,"2s")+"  SHZ IPU2"+\
                             format(p_year,"4d")+format(p_month,"0>2d")+format(p_day,"0>2d")+\
                             format(p_hr,"0>2d")+format(p_min,"0>2d")+\
                             format(p_sec*100,">5.0f")+\
                             format(res*100,">4.0f")+"  0    0   0   0"+"\n")
                     if p_type=="S":
-                        f.write(format(sta,"<5s")+format(net,"2s")+"  SHZ     "+\
+                        f.write(format(sta,"<5s")+format(net,"2s")+"  SHZ    2"+\
                             format(p_year,"4d")+format(p_month,"0>2d")+format(p_day,"0>2d")+\
                             format(p_hr,"0>2d")+format(p_min,"0>2d")+"    0   0  0"+\
                             format(p_sec*100,">5.0f")+"ES 1"+format(res*100,">4.0f")+"\n")

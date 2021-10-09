@@ -122,6 +122,12 @@ def data_scc(tmplt_data,st_data,ncom):
     return ccmax,aamax,i0,cc_list
 
 def gen_scc_input(src_root,tar_root,freqmin,freqmax):
+    """
+    Prepare the sliding window cross-correlation input files
+    Parameters:
+      src_root: The source data folder
+      tar_root: The target output folder
+    """
     if not os.path.exists(tar_root):
         os.mkdir(tar_root)
     arr_folder = os.path.join(tar_root,'arr_files')
@@ -138,12 +144,13 @@ def gen_scc_input(src_root,tar_root,freqmin,freqmax):
     _days = os.listdir(src_root)
     _days.sort()
     for _day in _days:
+        os.mkdir(os.path.join(tar_root,'eve_wf_bp',_day))
         _eves = os.listdir(os.path.join(src_root,_day))
         _eves.sort()
         for _eve in _eves:
-            if not os.path.exists(os.path.join(tar_root,'eve_wf_bp',_eve)):
-                _eve_path = os.path.join(tar_root,'eve_wf_bp',_eve)
-                os.mkdir(_eve_path)
+            _eve_folder = os.path.join(tar_root,'eve_wf_bp',_day,_eve)
+            if not os.path.exists(_eve_folder):
+                os.mkdir(_eve_folder)
             for sac in os.listdir(os.path.join(src_root,_day,_eve)):
                 st = obspy.read(os.path.join(src_root,_day,_eve,sac))
                 chn = st[0].stats.channel
@@ -151,16 +158,16 @@ def gen_scc_input(src_root,tar_root,freqmin,freqmax):
                 st.detrend("linear"); st.detrend("constant")
                 st.filter("bandpass",freqmin=freqmin,freqmax=freqmax,zerophase=True)
                 if chn[-1]=="N":
-                    st[0].write(os.path.join(tar_root,'eve_wf_bp',_eve,f"{sta}.r"),format="SAC")
+                    st[0].write(os.path.join(_eve_folder,f"{sta}.r"),format="SAC")
                 if chn[-1]=="E":
-                    st[0].write(os.path.join(tar_root,'eve_wf_bp',_eve,f"{sta}.t"),format="SAC")
+                    st[0].write(os.path.join(_eve_folder,f"{sta}.t"),format="SAC")
                 if chn[-1]=="Z":
-                    st[0].write(os.path.join(tar_root,'eve_wf_bp',_eve,f"{sta}.z"),format="SAC")
+                    st[0].write(os.path.join(_eve_folder,f"{sta}.z"),format="SAC")
                     try:
                         a = st[0].stats.sac.a
                         arr_file = os.path.join(arr_folder,f"{sta}_P.arr")
                         with open(arr_file,'a') as f:
-                            f.write(os.path.join("eve_wf_bp",_eve,sta+".z"))
+                            f.write(os.path.join("eve_wf_bp",_day,_eve,sta+".z"))
                             f.write(f"  {format(a,'5.2f')}  1\n")
                         f.close()
                     except:
@@ -169,7 +176,7 @@ def gen_scc_input(src_root,tar_root,freqmin,freqmax):
                         t0 = st[0].stats.sac.t0
                         arr_file = os.path.join(arr_folder,f"{sta}_S.arr")
                         with open(arr_file,'a') as f:
-                            f.write(os.path.join("eve_wf_bp",_eve,sta+".z"))
+                            f.write(os.path.join("eve_wf_bp",_day,_eve,sta+".z"))
                             f.write(f"  {format(t0,'5.2f')}  1\n")
                         f.close()
                     except:

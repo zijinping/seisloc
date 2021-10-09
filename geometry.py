@@ -1,3 +1,4 @@
+#-----------------------------------------------------------------------------
 import numpy as np
 from math import acos,sin,cos,pi,radians
 
@@ -24,7 +25,8 @@ def in_ellipse(xy_list,width,height,angle=0,xy=[0,0]):
     if isinstance(xy_list,list):
         xy_list = np.array(xy_list)
     if not isinstance(xy_list,np.ndarray):
-        raise Exception(f"Unrecoginzed data type: {type(xy_list)}, should be list or np.ndarray")
+        raise Exception(f"Unrecoginzed data type: {type(xy_list)}, \
+                          should be list or np.ndarray")
     new_xy_list = xy_list.copy()
     new_xy_list = new_xy_list - xy
 
@@ -52,6 +54,7 @@ def loc_by_width(lon1,lat1,lon2,lat2,width,direction='right'):
     Parameters:
       lon1,lat1: longitude and latitude of tip 1
       lon2,lat2: longitude and latitude of tip 2
+      direction: The side of new points from tip 1 to tip2 direction
     """
     sphe_dist = spherical_dist(lon1,lat1,lon2,lat2)
     dlon = lon2 - lon1

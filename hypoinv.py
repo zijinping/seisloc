@@ -1,4 +1,4 @@
-###################################
+#----------------------------------------------------------------------------
 # coding: utf-8
 # Author: ZI,Jinping
 # History:
@@ -24,6 +24,61 @@ import shutil
 import subprocess
 import time
 import pickle
+
+def invmod2vel(out_file,vp_file,vs_file="",ps_ratio=1.73,vpdamp=1,vsdamp=1):
+    """
+    Convert hypoinverse velocity model to the velest velocity model
+
+    Parameters:
+       out_file: the output velest velocity model file
+        vp_file: input hypoinverse P velocity file
+        vs_file: input hypoinverse S velocity file, if vs_file == "",
+                   the output S velocity will be calculated based on P
+                   velocity and ps_ratio
+       ps_ratio: used when vs_file==""
+         vpdamp: damping factor in the output P velocity model
+         vsdamp: damping factor in the output S velocity model
+    """
+    vp_vels = []
+    vp_lays = []
+    vs_vels = []
+    vs_lays = []
+    with open(vp_file,'r') as f:
+        cont = f.readlines()
+    for i in range(1,len(cont)):                 # Start from the second line
+        vp_vel,vp_lay = map(float,cont[i].split())
+        vp_vels.append(vp_vel)
+        vp_lays.append(vp_lay)
+    if vs_file != "":
+        with open(vs_file,'r') as f:
+            cont = f.readlines()
+        for i in range(1,len(cont)):             # Start from the second line
+            vs_vel,vs_lay = map(float,cont[i].split())
+            vs_vels.append(vp_vel)
+            vs_lays.append(vp_lay)
+    else:
+        vs_lays = vp_lays.copy()
+        for vp_vel in vp_vels:
+            vs_vels.append(vp_vel/ps_ratio)
+
+    f = open(out_file,'w')
+    f.write("Velocity model from HYPOINVERSE\n")
+    f.write(str(len(vp_vels))+"\n")
+    for i in range(len(vp_vels)):
+        f.write(format(vp_vels[i],'5.2f'))
+        f.write("     ")
+        f.write(format(vp_lays[i],'7.2f'))
+        f.write("  ")
+        f.write(format(vpdamp,'7.3f'))
+        f.write("\n")
+    f.write(str(len(vs_vels))+"\n")
+    for i in range(len(vs_vels)):
+        f.write(format(vs_vels[i],'5.2f'))
+        f.write("     ")
+        f.write(format(vs_lays[i],'7.2f'))
+        f.write("  ")
+        f.write(format(vpdamp,'7.3f'))
+        f.write("\n")
 
 def phs_add_mag(phs_file,mag_file):
     """

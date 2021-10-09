@@ -10,6 +10,7 @@ import warnings
 import numpy as np
 import multiprocessing as mp
 import time
+from tqdm import tqdm
 from seisloc.sta import load_sta
 warnings.filterwarnings("ignore")
 
@@ -59,7 +60,7 @@ def time_file_list(i_path,folder):
     return t_point_list,data_path_list
 
 
-def day_split(i_path,o_path,folder,sta_dict,format,shift_hour=0):
+def day_split(i_path,o_path,folder,sta_dict,format,shift_hour=0,cut_data=True):
         # get the ordered time list and corresponding file path 
         t_point_list,data_path_list = time_file_list(i_path,folder)
         
@@ -73,11 +74,11 @@ def day_split(i_path,o_path,folder,sta_dict,format,shift_hour=0):
         o_folder = os.path.join(o_path,sta)
         if not os.path.exists(o_folder):
             os.mkdir(o_folder)
+
         for chn in ["BHE","BHN","BHZ"]:
 
             tts=t_point_list[0] #total start time is the start time of the first file 
             tte=t_point_list[-1]#total end time is the end time of the last file
-
             #start to get the trim point to form day_sac files
             trim_point_list=[]
             trim_point_list.append(tts)#the first point is the start time of the first file
@@ -93,6 +94,16 @@ def day_split(i_path,o_path,folder,sta_dict,format,shift_hour=0):
                 trim_node+=24*60*60
             #add the total time end to the last
             trim_point_list.append(tte)
+            # write into txt file available days
+            f = open(os.path.join(o_folder,'availdays.txt'),'w')
+            tmp_list = []
+            for time in trim_point_list:
+                if time.julday not in tmp_list:
+                    f.write(f"{time.julday}\n")
+                    tmp_list.append(time.julday)
+            f.close()
+            if cut_data == False:
+                return                  #only generate availdays.txt
             #for each time segment, need to check the corresponding files then load, merge and trim.
             for i in range(len(trim_point_list)-1):
                 trim_s=trim_point_list[i] #trim start time
@@ -134,7 +145,7 @@ def day_split(i_path,o_path,folder,sta_dict,format,shift_hour=0):
             pos_write(o_folder,sta_dict)
             
             
-def mp_day_split(i_path,o_path,sta_file,format="mseed",shift_hour=0,parallel=True):
+def mp_day_split(i_path,o_path,sta_file,format="mseed",shift_hour=0,parallel=True,cut_data=True):
     '''
     This function reads in the data from QS5A devices and split them by days
     Parameters:
@@ -161,7 +172,7 @@ def mp_day_split(i_path,o_path,sta_file,format="mseed",shift_hour=0,parallel=Tru
     status = True
     false_folder = []
     print("# Check the network and station name...")
-    for folder in folder_list:
+    for folder in tqdm(folder_list):
         file_list=os.listdir(os.path.join(i_path,folder))
         for file in file_list:
             try:
@@ -191,7 +202,7 @@ def mp_day_split(i_path,o_path,sta_file,format="mseed",shift_hour=0,parallel=Tru
         cores = int(mp.cpu_count()/2)
         tasks = []
         for folder in folder_list:
-            tasks.append([i_path,o_path,folder,sta_dict,format,shift_hour])
+            tasks.append([i_path,o_path,folder,sta_dict,format,shift_hour,cut_data])
         pool = mp.Pool(processes=cores)
         rs = pool.starmap_async(day_split,tasks,chunksize=1)
         pool.close()
@@ -203,7 +214,7 @@ def mp_day_split(i_path,o_path,sta_file,format="mseed",shift_hour=0,parallel=Tru
             time.sleep(0.5)
     if status == True and parallel==False:
         for folder in folder_list:
-            day_split(i_path,o_path,folder,sta_dict,format,shift_hour)
+            day_split(i_path,o_path,folder,sta_dict,format,shift_hour,cut_data=cut_data)
 
 if __name__=="__main__":
     """

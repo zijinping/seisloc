@@ -16,6 +16,28 @@ import re
 from obspy import UTCDateTime
 import pandas as pd
 from obspy.geodetics import gps2dist_azimuth
+import logging
+import pickle
+
+def init_logger(log_file,file_level=logging.DEBUG,stream_level=logging.INFO):
+    '''
+    Parameters:
+        log_file: file to save the log information
+        file_level: level for file writing
+        stream_level: level for stream writing
+    '''
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    fh = logging.FileHandler(log_file,mode='w')
+    fh.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s-%(filename)s-%(levelname)s: %(message)s')
+    fh.setFormatter(formatter)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    logger.addHandler(fh)
+
 
 def extract_set_info(pth,sta_file,depth=2):
     """
@@ -31,54 +53,76 @@ def extract_set_info(pth,sta_file,depth=2):
         "center" : mean longitude and latitude of stations,intended for tele-
                    event selection.
     """
+    logger = logging.getLogger()
+    logger.info("Extract_set_info program launched...")
+    parent_path = os.path.split(pth)[0]
+    if parent_path=="":
+        parent_path="."
+    if os.path.exists(os.path.join(parent_path,'setinfo.pkl')):
+        f = open(os.path.join(parent_path,'setinfo.pkl'),'rb')
+        setinfo = pickle.load(f)
+        logger.info("Read in the existed setinfo.pkl and return")
+        return setinfo
+
     setinfo = {}
     sta_dict = load_sta(sta_file)
     s_times = []
     e_times = []
     netstas = []
-    sta_lons = []
-    sta_lats = []
+    stalons = []
+    stalats = []
+    logger.debug(f"file system depth is {depth}")
+    availdays = []
     if depth == 2:                    # strcture: pth/folder/seis_file
         for item in os.listdir(pth):
             if os.path.isdir(os.path.join(pth,item)):
+                logging.debug(f"Process dir {item}")
+                juldays = []
                 for file in os.listdir(os.path.join(pth,item)):
+                    if file == "availdays.txt":
+                        juldays = []
+                        f = open(os.path.join(pth,item,file),'r')
+                        for line in f:
+                            line = line.rstrip()
+                            julday = int(line)
+                            juldays.append(julday)
                     try:
                         st = obspy.read(os.path.join(pth,item,file),headonly=True)
                         for tr in st:
+                            s_julday = tr.stats.starttime.julday
+                            e_julday = tr.stats.endtime.julday
+                            if s_julday not in juldays:
+                                juldays.append(s_julday)
+                            if e_julday not in juldays:
+                                juldays.append(e_julday)
                             net = tr.stats.network
                             sta = tr.stats.station
                             netsta = net+sta
                             if netsta not in netstas:
                                 netstas.append(netsta)
-                                sta_lons.append(sta_dict[net][sta][0])
-                                sta_lats.append(sta_dict[net][sta][1])          
-                            s_times.append(tr.stats.starttime)
-                            e_times.append(tr.stats.endtime)
+                                stalons.append(sta_dict[net][sta][0])
+                                stalats.append(sta_dict[net][sta][1])      
+                            if tr.stats.starttime not in s_times:
+                                s_times.append(tr.stats.starttime)
+                            if tr.stats.endtime not in e_times:
+                                e_times.append(tr.stats.endtime)
                     except:           # not seis file
                         pass
-    if depth == 1:                    # strcture: pth/seis_file
-        for item in os.listdir(pth):
-            if os.path.isfile(os.path.join(pth,item)):
-                try:
-                    st = obspy.read(os.path.join(pth,item,file),headonly=True)
-                    for tr in st:
-                        net = tr.stats.network
-                        sta = tr.stats.station
-                        netsta = net+sta
-                        if netsta not in netstas:
-                            netstas.append(netsta)
-                            sta_lons.append(sta_dict[net][sta][0])
-                            sta_lats.append(sta_dict[net][sta][1])  
-                        s_times.append(tr.stats.starttime)
-                        e_times.append(tr.stats.endtime)
-                except:               # not seis file
-                    pass
-
+            if len(juldays) > 0:
+                availdays.append(sorted(juldays))
+    if len(availdays)>0 and len(availdays)!= len(netstas):
+        raise Exception("len(availdays) not equal len(netstas)")
+    setinfo["availdays"] = availdays
     setinfo["s_times"] = sorted(s_times)
     setinfo["e_times"] = sorted(e_times)
+    setinfo["stalons"] = stalons
+    setinfo["stalats"] = stalats
     setinfo["netstas"] = netstas
-    print(sta_lons)
-    setinfo["center"] = [np.mean(sta_lons),np.mean(sta_lats)] 
+    setinfo["center"] = [np.mean(stalons),np.mean(stalats)]
+    logging.info("extract set info programme done")
+    f = open(os.path.join(parent_path,"setinfo.pkl"),'wb')
+    pickle.dump(setinfo,f)
+    f.close()
     return setinfo
 
 def load_sta(sta_file):
@@ -127,7 +171,7 @@ def read_sac_ref_time(tr):
     sac_ref_time = UTCDateTime(year,month,day,nzhour,nzmin,nzsec)+nzmsec
     return sac_ref_time
 
-def get_st(net,sta,starttime,endtime,f_folder):
+def get_st(net,sta,starttime,endtime,f_folder,pad=False,fill_value=0):
     """
     Read and return waveform between starttime and endtime by specified
     net and station in designated folder. It will merge waveform if include
@@ -156,7 +200,12 @@ def get_st(net,sta,starttime,endtime,f_folder):
     if len(st) == 0:
         pass
     else:
-        st.trim(starttime,endtime)
+        if len(st)>3:
+            st = st.merge()
+        if pad == True:
+            st.detrend("constant")
+            st.detrend("linear")
+        st.trim(starttime,endtime,pad=pad,fill_value=fill_value)
     return st
 
 def julday(year,month,day):
@@ -207,99 +256,3 @@ def find_nearest(array,value):
 
 
 
-def read_sta_file(sta_file):
-    """
-    Read information from the station file with free format: net,sta,lon,lat,ele,label.
-    The label is designed with the purpose to distinguish stations into types.
-    """
-    cont = []
-    with open(sta_file,'r') as f:
-        for line in f:
-            line = line.rstrip()
-            net,sta,_lon,_lat,_ele,label = re.split(" +",line)
-            cont.append([net,sta,float(_lon),float(_lat),int(_ele),label])
-    f.close()
-    if len(cont)==0:
-        raise Exception(f"No content in the station file {sta_file}")
-    return cont
-
-def to_inv_sta_file(cont,out_file):
-    f_inv = open(out_file,'w')
-    for tmp in cont:
-        lat = tmp[3]
-        lon = tmp[2]
-        ele = tmp[4]
-        net = tmp[0]
-        sta = tmp[1]
-        label = tmp[5]
-        net_sta = net+sta
-        lon_i = int(lon)
-        lon_f = lon-lon_i
-        lat_i = int(lat)
-        lat_f = lat-lat_i
-        f_inv.write(format(sta,"<6s")+format(net,"<4s")+"SHZ  "+format(lat_i,">2d")+" "+\
-                format(lat_f*60,">7.4f")+" "+format(lon_i,">3d")+" "+format(lon_f*60,">7.4f")+\
-                "E"+format(ele,">4d")+"\n")
-    f_inv.close()
-
-def sta2inv(sta_file,out_file):
-    """
-    Convert station file into hypoinverse format
-    """
-    cont = read_sta_file(sta_file)      # Read in information
-    to_inv_sta_file(cont,out_file)  # Write into files
-
-def to_dd_sta_file(cont,out_file):
-    f_dd = open(out_file,'w')
-    for tmp in cont:
-        lat = tmp[3]
-        lon = tmp[2]
-        ele = tmp[4]
-        net = tmp[0]
-        sta = tmp[1]
-        label = tmp[5]
-        net_sta = net+sta
-        lon_i = int(lon)
-        lon_f = lon-lon_i
-        lat_i = int(lat)
-        lat_f = lat-lat_i
-        f_dd.write(format(net_sta,"<9s")+format(lat_i+lat_f,">9.6f")+format(lon_i+lon_f,">12.6f")+\
-                   " "+format(ele,'>5d')+"\n")
-    f_dd.close()
-
-def sta2dd(sta_file,out_file):
-    """
-    Convert station file into hypoDD format
-    """
-    cont = read_sta_file(sta_file)      # Read in information
-    to_dd_sta_file(cont,out_file)  # Write into files
-
-def to_vel_sta_file(cont,out_file,ele_zero=True):
-    f_vel = open(out_file,'w')
-    f_vel.write("(a5,f7.4,a1,1x,f8.4,a1,1x,i4,1x,i1,1x,i3,1x,f5.2,2x,f5.2,3x,i1)\n")
-    sta_count = 1
-    for tmp in cont:
-        lat = tmp[3]
-        lon = tmp[2]
-        ele = tmp[4]
-        net = tmp[0]
-        sta = tmp[1]
-        label = tmp[5]
-        if ele_zero:
-            ele = 0
-            f_vel.write(f"{format(sta,'<5s')}{format(lat,'7.4f')}N {format(lon,'8.4f')}E {format(ele,'4d')} 1 "+\
-                        f"{format(sta_count,'3d')} {format(0,'5.2f')}  {format(0,'5.2f')}   1\n")
-        else:
-            f_vel.write(f"{format(sta,'<5s')}{format(lat,'7.4f')}N {format(lon,'8.4f')}E {format(ele,'4d')} 1 "+\
-                        f"{format(sta_count,'3d')} {format(0,'5.2f')}  {format(0,'5.2f')}   1\n")
-        sta_count += 1
-    f_vel.write("  \n")   # signal of end of file for VELEST
-    f_vel.close()
-
-def sta2vel(sta_file,out_file,ele_zero=True):
-    """
-    Convert station file into VELEST format with 5 characters,
-    which is applicable for the update VELEST program modified by Hardy ZI
-    """
-    cont = read_sta_file(sta_file)
-    to_vel_sta_file(cont,out_file,ele_zero)

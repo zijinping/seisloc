@@ -5,6 +5,9 @@ import obspy
 from obspy import UTCDateTime
 
 def to_mseed(trace):
+    """
+    Save the obspy trace to the format EQTransformer could recognized
+    """
     net = trace.stats.network
     sta = trace.stats.station
     chn = trace.stats.channel

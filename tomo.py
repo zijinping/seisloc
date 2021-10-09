@@ -1,11 +1,13 @@
-def prep_MOD(head,lon_list,lat_list,dep_list,vel_list,poisson_list):
+import warnings
+
+def prepMOD(head,lon_list,lat_list,dep_list,vel_list,poisson_list):
     """
     Output MOD file for the tomoDD based on information provided
     Parameters:
     head: bld,nx,ny,nz. bld:resolution; nx/ny/nz: nodes for lon/lat/dep
     vel_list: P wave velocity list
     poisson_list: possion ratio of each layer
-    len(lon_list)==nx; len(lat_list)==ny; len(dep_list)==nz;
+    len(lon_list)=nx; len(lat_list)=ny; len(dep_list)=nz;
     len(vel_list)==nz;len(poisson_list)==nz
     """
     f = open("MOD",'w')
