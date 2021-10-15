@@ -1,6 +1,6 @@
-#------------------------------------------------------------------------------
 import re
 from obspy.geodetics import gps2dist_azimuth
+import json
 
 def sta_dist_pairs(netstas,sta_dict,group_qty=6):
     """
@@ -177,3 +177,24 @@ def sta_sel(sta_file,c_lon,c_lat,nets=[],stas=[],radius=100):
             f1.write(line+"\n")
     f2.close()
     f1.close()
+
+def sta2eqt(sta_file,out_file):
+    """
+    Convert station file into EQTransformer format
+    """
+    eqt_sta_dict = {}
+    with open(sta_file,'r') as f:
+        for line in f:
+            line = line.rstrip()
+            net,sta,_lon,_lat,_ele,_ = re.split(" +",line[:42])
+            lon = float(_lon)
+            lat = float(_lat)
+            ele = float(_ele)
+            eqt_sta_dict[sta]={}
+            eqt_sta_dict[sta]["network"]=net
+            eqt_sta_dict[sta]["channels"]=["BHN","BHE","BHZ"]
+            eqt_sta_dict[sta]["coords"] = [lat,lon,ele]
+    f.close()
+    with open(out_file,'w') as dump_f:
+        json.dump(eqt_sta_dict,dump_f)
+    dump_f.close()    

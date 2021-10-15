@@ -74,3 +74,51 @@ def loc_by_width(lon1,lat1,lon2,lat2,width,direction='right'):
     new_lat2 = lat2 + delta_lat
 
     return new_lon1,new_lat1,new_lon2,new_lat2
+
+def seismic_path_calculation(e_lon,e_lat,e_dep,in_angle,vel_set):
+    """
+    Parameters:
+        e_lon,e_lat,e_dep: the earthquake longitude, latitude and depth
+        sta_lon,sta_lat: the station location
+        vel_set: array format [[dep1,vel1],[dep2,vel2]], where vel1 indicates the velocity between dep1 and dep2
+    """
+    # initiation
+    trace_points = []  
+    trace_points.append([0,e_dep]) # store the location of trace points
+    # First need to know which layer the event depth belongs to
+    if not isinstance(vel_set,np.ndarray):
+        vel_set = np.array(vel_set)
+        
+    # Find the corresponding layer source belongs to
+    idx = -1
+    for i in range(vel_set.shape[0]-1):
+        if vel_set[i,0] <= e_dep and vel_set[i+1,0] > e_dep:
+            idx = i
+    if idx == -1: # not assigned in above loop, then it is below the last depth
+            idx = vel_set.shape[0]-1
+    
+    # calculate p value
+    v_start = vel_set[idx,1]
+    p = np.sin(np.pi*in_angle/180)/v_start
+    
+    # calculate the total T(time in seconds) and X(horizontal distance in meters)
+    T_sum = 0
+    X_sum = 0
+    tmp_gap = e_dep - vel_set[idx,0]
+    tmp_T = tmp_gap/np.cos(np.pi*in_angle/180)/vel_set[idx,1]
+    tmp_X = tmp_gap*np.tan(np.pi*in_angle/180)
+    T_sum += tmp_T
+    X_sum += tmp_X
+    trace_points.append([trace_points[-1][0]+tmp_X,trace_points[-1][1]-tmp_gap])
+    for i in range(idx):
+        tmp_angle = np.arcsin(vel_set[idx-1-i,1]*p)*180/np.pi
+        print(tmp_angle)
+        tmp_gap = vel_set[idx-i,0]-vel_set[idx-1-i,0]
+        tmp_T = tmp_gap/np.cos(np.pi*tmp_angle/180)/vel_set[idx-1-i,1]
+        tmp_X = tmp_gap*np.tan(np.pi*tmp_angle/180)
+        T_sum += tmp_T
+        X_sum += tmp_X
+        trace_points.append([trace_points[-1][0]+tmp_X,trace_points[-1][1]-tmp_gap])
+    print("T_sum, X_sum: ",T_sum,X_sum)
+    print(trace_points)
+    return np.array(trace_points)

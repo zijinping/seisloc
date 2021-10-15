@@ -386,7 +386,7 @@ def hypoDD_mag_mapper(reloc_file,out_sum):
     with open(out_sum,"r") as f_obj:
         for line in f_obj:
             event_id = int(line[136:146])
-            event_mag = int(line[122:126])*0.01
+            event_mag = int(line[123:126])*0.01
             event_mag_list[event_id]=event_mag
     f_obj.close()
     #add in the magnitude
@@ -535,7 +535,7 @@ def dd_bootstrap(base_folder="hypoDD",times=10,samp_ratio=0.75,cores=2):
     f.close()
     print("Done")
 
-def pha_subset(pha_file,loc_filter,obs_filter=8,out_path=None):
+def pha_subset(pha_file,loc_filter,obs_filter=8,out_file=None):
     """
     *.pha file is the input file for hypoDD ph2dt, this function subset the
     pha file by the boundary condition and the minimum observation condition.
@@ -550,10 +550,8 @@ def pha_subset(pha_file,loc_filter,obs_filter=8,out_path=None):
     """
 
     lon_min, lon_max, lat_min, lat_max = loc_filter
-    if out_path == None:
+    if out_file == None:
         out_file = pha_file+".st"
-    else:
-        out_file = out_path
     f = open(out_file,"w")
     f.close()
     pha_content = []

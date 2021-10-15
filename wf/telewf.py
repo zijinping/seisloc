@@ -130,15 +130,16 @@ def read_tele_phase(cont,sta_sel=[]):
 def tele_file_plot(tele_file,
               wf_dir = "day_data",
               sta_sel=[],
-              sta_high=[],
+              sta_exclude = [],
+              sta_highlight=[],
               plot_phase = "P",
               p_method="dist",
               bp_range= [0.5,2],
-              x_offset_percent=1,
-              y_offset_percent=0.5,
+              x_offsets=[10,20],
+              y_offset_ratio=[0.5,0.5],
               wf_normalize=True,
               wf_scale_factor=1,
-              label_sta = True,
+              label_stas = [],
               figsize=(6,8),
               linewidth=1,
               o_format="pdf",
@@ -148,23 +149,25 @@ def tele_file_plot(tele_file,
     Parameters:
           wf_dir: The folder containing wf data in strcture wf_dir/sta_name/'wf files'
          sta_sel: stations selected for plot, empty for all stations
-        sta_high: station waveform to be highlighted will be drawn in green
+     sta_exclude: stations excluded in the plot,used for problem staion
+   sta_highlight: station waveform to be highlighted will be drawn in green
       plot_phase: "P","S" or "PS". "P" only plot P arrival, "S"  only plot S arrival.
                     "PS" means both P arrival and S arrival will be presented
         p_method: 'dist' means plot by distance, "average" means the vertical 
                   gap between stations are the same
     from_save_wf: load saved miniseed waveform from previous run
   save_result_wf: miniseed file will be saved the same name will telefile
+      label_stas: False means no label, empty list means all, else label station in list
     """
     logger = logging.getLogger()
     logger.info(tele_file)
 
     if from_saved_wf == True:
+        mseed_file = tele_file.rsplit(".",1)[0]+".mseed"
         if not os.path.exists(mseed_file):
             logging.error("mseed file not exits, set from_saved_wf False")
             from_saved_wf = False
         else:
-            mseed_file = tele_file.rsplit(".",1)[0]+".mseed"
             saved_st = obspy.read(mseed_file)
     #-------------- load tele file---------------------------------------------
     cont=[]                                 # Store content from file
@@ -194,20 +197,20 @@ def tele_file_plot(tele_file,
     min_dist = sta_pha_list[0][3]
     max_dist = sta_pha_list[-1][3]
 
-    y_start = min_dist-y_offset_percent*(max_dist-min_dist-0.1)                        
-    y_end = max_dist+y_offset_percent*(max_dist-min_dist+0.1)                      
+    y_start = min_dist-y_offset_ratio[0]*(max_dist-min_dist-0.1)                        
+    y_end = max_dist+y_offset_ratio[1]*(max_dist-min_dist+0.1)                      
 
     if plot_phase == "P":
-        x_start = min_P-x_offset_percent*(max_P-min_P-0.1)
-        x_end = max_P+x_offset_percent*(max_P-min_P+0.1)
+        x_start = min_P-x_offsets[0]
+        x_end = max_P+x_offsets[1]
 
     elif plot_phase == "S":
-        x_start = min_S-x_offset_percent*(max_S-min_S-0.1)
-        x_end = max_S+x_offset_percent*(max_S-min_S+0.1)
+        x_start = min_S-x_offsets[0]
+        x_end = max_S+x_offsets[1]
 
     elif plot_phase == "PS":
-        x_start = min_P-x_offset_percent*(max_S-min_P-0.1)
-        x_end = max_S+x_offset_percent*(max_S-min_P+0.1)
+        x_start = min_P-x_offsets[0]
+        x_end = max_S+x_offsets[1]
     else:
         raise Exception(f"'plot_phase' parameter {plot_phase} not in 'P','S','PS'")
 
@@ -226,6 +229,8 @@ def tele_file_plot(tele_file,
         netsta = sta_phase[0]
         net = netsta[:2]
         sta = netsta[2:]
+        if sta in sta_exclude:
+            continue
         P_time = sta_phase[1]
         S_time = sta_phase[2]
         dist = sta_phase[3]
@@ -251,11 +256,11 @@ def tele_file_plot(tele_file,
                     st[0].data=data/(max(data) - min(data)) # Normalize data
                 st[0].data = st[0].data * wf_scale_factor
             # Draw waveform
-            if sta in sta_high:                               # color='k' means black
+            if sta in sta_highlight:                               # color='k' means black
                 plt.plot(np.arange(0,len(st[0].data))*1/sampling_rate+x_start,
                          st[0].data+dist,
-                         color='g',
-                         linewidth=linewidth)
+                         color='darkred',
+                         linewidth=3*linewidth)
             else:                                         # color='g' means green
                 plt.plot(np.arange(0,len(st[0].data))*1/sampling_rate+x_start,
                          st[0].data+dist,
@@ -265,7 +270,9 @@ def tele_file_plot(tele_file,
             P_marker, = plt.plot([P_time,P_time],[dist-0.5,dist+0.5],color='r',linewidth=2)
             # Plot S arrival marker in blue
             S_marker, = plt.plot([S_time,S_time],[dist-0.5,dist+0.5],color='b',linewidth=2)
-            if label_sta:
+            if label_stas!=False and len(label_stas)==0:
+                plt.text(x_start,dist+0.1,f'{sta}',color='darkred',fontsize=12)
+            elif label_stas!=False and sta in label_stas:
                 plt.text(x_start,dist+0.1,f'{sta}',color='darkred',fontsize=12)
     plt.legend([P_marker,S_marker],['tele P','tele S'],loc='upper right')
     plt.tight_layout()

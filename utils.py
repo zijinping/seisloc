@@ -18,6 +18,34 @@ import pandas as pd
 from obspy.geodetics import gps2dist_azimuth
 import logging
 import pickle
+from numba import cuda
+
+cuda.jit()
+def _matmul_gpu(A,B,C):
+    row,col = cuda.grid(2)
+    if row < C.shape[0] and col < C.shape[1]:
+        tmp = 0.
+        for k in range(A.shape[1]):
+            tmp += A[row,k] * B[k,col]
+        C[row,col] = tmp
+
+def matmul_gpu(A,B,C,TPX=16,TPY=16):
+    if len(cuda.gpus) == 0:
+        raise Exception("Error, no gpu available")
+    A_global_mem = cuda.to_device(A)
+    B_global_mem = cuda.to_device(B)
+    C_global_mem = cuda.device_array(A.shape[0],B.shape[1])
+    threads_per_block = (TPA,TPB)
+    blocks_per_grid_x = int(math.ceil(A.shape[0]/threads_per_block[0]))
+    blocks_per_grid_y = int(math.ceil(B.shape[1]/threads_per_block[1]))
+    blocks_per_grid = (blocks_per_grid_x,blocks_per_grid_y)
+
+    _matmul_gpu[blocks_per_grid,blocks_per_block](A_global_mem,
+                                                  B_global_mem,
+                                                  C_global_mem)
+    cuda.syschronize()
+    C_global_gpu = C_global_mem.copy_to_host()
+
 
 def init_logger(log_file,file_level=logging.DEBUG,stream_level=logging.INFO):
     '''

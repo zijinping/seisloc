@@ -352,3 +352,26 @@ def load_sum_rev(sum_file):
             sum_dict[eve_folder] = [eve_id,evlo,evla,evdp,e_mag,e_res]
     f.close()
     return sum_dict
+
+def arc_filt(arc_file="Y2000.phs",min_obs=8):
+    cont = []
+    with open(arc_file,"r") as f:
+        cont = f.readlines()
+    f.close()
+    filt_cont = []
+    tmp_cont = []
+
+    for line in cont:
+        if line[:4] != "    ":
+            tmp_cont.append(line)
+        else:
+            tmp_cont.append(line)
+            if len(tmp_cont) >= min_obs+1+1: # 1 event line, one evid line
+                for line in tmp_cont:
+                    filt_cont.append(line)
+            tmp_cont = []
+
+    with open(arc_file+".filt",'w') as f:
+        for line in filt_cont:
+            f.write(line)
+    f.close()
