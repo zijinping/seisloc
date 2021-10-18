@@ -5,6 +5,8 @@ from seisloc.hypoinv import load_sum_rev,load_sum
 import os
 import glob
 from tqdm import tqdm
+import numpy as np
+import pandas as pd
 
 def event_sel(evid_list=[],event_dat="event.dat",event_sel="event.sel"):
     '''

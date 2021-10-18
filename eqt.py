@@ -3,8 +3,9 @@
 
 import obspy
 from obspy import UTCDateTime
+import os
 
-def to_mseed(trace):
+def to_mseed(trace,out_folder="./"):
     """
     Save the obspy trace to the format EQTransformer could recognized
     """
@@ -17,5 +18,5 @@ def to_mseed(trace):
                 starttime.strftime("%Y%m%dT%H%M%SZ")+"__"+\
                 endtime.strftime("%Y%m%dT%H%M%SZ")+".mseed"\
 
-    trace.write(out_name)
+    trace.write(os.path.join(out_folder,out_name))
 
