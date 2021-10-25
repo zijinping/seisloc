@@ -207,33 +207,55 @@ def get_st(net,sta,starttime,endtime,f_folder,pad=False,fill_value=0):
     
     The return is a obspy Stream object
     """
-    inc_list=[]
-    for file in os.listdir(f_folder):
-        file_path = os.path.join(f_folder,file)
-        try:
-            st = obspy.read(file_path,headonly=True)
-        except:
-            continue
-        t1,t2 = st[0].stats.starttime,st[0].stats.endtime
-        if t2 < starttime or t1 > endtime \
-            or st[0].stats.network != net\
-            or st[0].stats.station != sta:
-            continue
-        else:
-            inc_list.append(file_path)
-    #Read in data
     st = Stream()
-    for path in inc_list:
-        st += obspy.read(path)
+    try:
+        st += obspy.read(os.path.join(f_folder,f"*{sta}*"))
+    except:
+        return st
+    st = st.select(network=net)
     if len(st) == 0:
         pass
     else:
         if len(st)>3:
             st = st.merge()
-        if pad == True:
-            st.detrend("constant")
-            st.detrend("linear")
-        st.trim(starttime,endtime,pad=pad,fill_value=fill_value)
+        if st[0].stats.starttime>=endtime or \
+           st[0].stats.endtime<=starttime:
+            st = Stream()
+        else:
+            st.trim(starttime,endtime,pad=pad,fill_value=fill_value)
+    return st
+
+def get_st_SC(net,sta,starttime,endtime,f_folder,pad=False,fill_value=0):
+    """
+    A modified get_st function for Agency data which stores data by UTM-8 and days.
+    """
+    ymd_start = starttime.strftime("%Y%m%d")
+    ymd_end = endtime.strftime("%Y%m%d")
+    st = Stream()
+    if ymd_start == ymd_end:
+        try:
+            f_folder = os.path.join(f_folder,ymd_start[:4],ymd_start[4:6],ymd_start[6:])
+            st += obspy.read(os.path.join(f_folder,f"*{sta}*"))
+        except:
+            pass
+    else:
+        try:
+            f_folder = os.path.join(f_folder,ymd_start[:4],ymd_start[4:6],ymd_start[6:])
+            st += obspy.read(os.path.join(f_folder,f"*{sta}*"))
+            f_folder = os.path.join(f_folder,ymd_end[:4],ymd_end[4:6],ymd_end[6:])
+            st += obspy.read(os.path.join(f_folder,f"*{sta}*"))
+        except:
+            pass
+    if len(st) == 0:
+        pass
+    else:
+        if len(st)>3:
+            st = st.merge()
+        if st[0].stats.starttime-8*60*60>=endtime or \
+           st[0].stats.endtime-8*60*60<=starttime:
+            st = Stream()
+        else:
+            st.trim(starttime-8*60*60,endtime-8*60*60,pad=pad,fill_value=fill_value)
     return st
 
 def julday(year,month,day):
@@ -281,6 +303,3 @@ def find_nearest(array,value):
     idx=np.abs(array-value).argmin()
     diff=array[idx]-value
     return idx,diff
-
-
-

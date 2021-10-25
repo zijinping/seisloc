@@ -1,7 +1,7 @@
 from obspy import UTCDateTime
 from obspy.geodetics import gps2dist_azimuth
 import re
-from seisloc.hypoinv import load_sum_rev,load_sum
+from seisloc.hypoinv import load_sum_evstr,load_sum_evid
 import os
 import glob
 from tqdm import tqdm
@@ -124,8 +124,8 @@ def gen_dtcc(sta_list,sum_file="out.sum",work_dir="./",cc_threshold=0.7,min_link
         min_link: minumum links to form an event pair
         max_dist: maximum distance accepted to form an event pair, unit km
     '''
-    sum_rev= load_sum_rev(sum_file) # dictionary {evid: [e_lon,e_lat,e_dep,e_mag]}
-    sum_dict= load_sum(sum_file)    # dictionary {"YYYYmmddHHMMSSff":[e_lon,e_lat,e_dep,e_mag]}
+    sum_rev= load_sum_evstr(sum_file) # dictionary {evid: [e_lon,e_lat,e_dep,e_mag]}
+    sum_dict= load_sum_evid(sum_file)    # dictionary {"YYYYmmddHHMMSSff":[e_lon,e_lat,e_dep,e_mag]}
     work_dir = os.path.abspath(work_dir)
     evid_list = []                  # event list included by scc results
     to_cc_list = []                 # event list included in the ouput dt.cc.* results

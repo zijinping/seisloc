@@ -299,7 +299,7 @@ def phs_subset(phs_file,evid_list=[],loc_filter=[]):
     f.close()
 
 
-def load_sum(sum_file):
+def load_sum_evid(sum_file):
     """
     *.sum file is the catalog summary file after Hyperinverse.
     This function returns a dict:
@@ -325,7 +325,7 @@ def load_sum(sum_file):
             sum_dict[eve_id] = [eve_folder,evlo,evla,evdp,e_mag,e_res]
     return sum_dict
 
-def load_sum_rev(sum_file):
+def load_sum_evstr(sum_file):
     """
     *.sum file is the catalog summary file after Hyperinverse.
     This function returns a dict:
