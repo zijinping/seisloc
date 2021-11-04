@@ -118,7 +118,29 @@ def gen_eve_wf(y2000_file,sta_file,src_root="day_data",tar_root="eve_wf",tb = -2
     write_eve_wf(phs_dict,tar_root)
 
 
-def wf_dist_plot(st,length=10,dist_threshold=50,scaling_factor=2,color=None,label_sta=True,out_format="PNG",out_folder="./"):
+def get_e_time(tr):
+    """
+    Applied to a sac trace. This function first read sac reference from from sac head.
+    Then read o_value from the sac head. Return is the event time
+    """
+    sac_ref_time = read_sac_ref_time(tr)    # In UTCDateTime format
+    o_value = st[0].stats.sac.o 
+    event_time = sac_ref_time + o_value     # event origin time
+    
+    return event_time
+
+def wf_dist_plot(st,
+                 xb=0,
+                 xe=10,
+                 dist_threshold=50,
+                 scaling_factor=2,
+                 color=None,
+                 label_sta=True,
+                 out_format="PNG",
+                 out_folder="./",
+                 figsize=(8,10),
+                 align=None,
+                 normalize=True):
     '''    
     Description
     ------------
@@ -129,7 +151,9 @@ def wf_dist_plot(st,length=10,dist_threshold=50,scaling_factor=2,color=None,labe
     Parameters
     -----------
                 st: obspy Stream object
-            length: The time window is defined by length in seconds.
+                xb: begin of x in reference to the event time, default 0
+                xe: end of x in reference to the event time, default 10
+    dist_threshold: set maximum distance for plot
     scaling_factor: The waveform are normalized, increase scaling_facotr to
                     make the waveform plot more obvious
              color: The usage of color is the same as matplotlib.pyplot. 
@@ -146,22 +170,24 @@ def wf_dist_plot(st,length=10,dist_threshold=50,scaling_factor=2,color=None,labe
     |        stla: tr.stats.sac.stla
     |        stlo: tr.stats.sac.stlo
     '''
+    
+    # >>>>>>>>>>>>> Initiation >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     st.detrend("linear")
     st.detrend("constant")
     try:
         e_mag = st[0].stats.sac.mag
     except:
         e_mag = -9
+        
     starttime=st[0].stats.starttime
     endtime =st[0].stats.endtime
-    #Reference time shoule be the same for all traces.
-    sac_ref_time = read_sac_ref_time(st[0]) #In UTCDateTime format
-    o_value = st[0].stats.sac.o 
-    event_time = sac_ref_time + o_value #event origin time
-    st.trim(starttime = event_time, endtime = event_time + length)
+    sampling_rate = st[0].stats.sampling_rate
+    
+    event_time = get_e_time(st[0])
+
     if len(st) == 0:
         print("Warning: Nothing to plot!")
-    #Inititae parameters
+
     for tr in st:
         evla = tr.stats.sac.evla
         evlo = tr.stats.sac.evlo
@@ -169,70 +195,102 @@ def wf_dist_plot(st,length=10,dist_threshold=50,scaling_factor=2,color=None,labe
         stlo = tr.stats.sac.stlo
         #It is recommend to set tr.stats.distance in meters by osbpy guideline
         tr.stats.distance = spherical_dist(evlo,evla,stlo,stla)*111*1000
+    
     #Get mininumtime, maximum time, and max distance
     min_time = st[0].stats.starttime
     max_time = st[0].stats.endtime
-    max_dist = st[0].stats.distance/1000 #in km
-    for tr in st[1:]:
+    max_dist = st[0].stats.distance/1000 # in km
+    min_dist = st[0].stats.distance/1000 # in km
+    min_dist_idx = 0
+    max_dist_idx = 0
+    for i,tr in enumerate(st[1:]):
         if tr.stats.starttime < min_time:
             min_time = tr.stats.starttime
         if tr.stats.endtime > max_time:
             max_time = tr.stats.endtime
         if tr.stats.distance/1000 > max_dist:
             max_dist = tr.stats.distance/1000
+            max_dist_idx = i
+        if tr.stats.distance/1000 < min_dist:
+            min_dist = tr.stats.distance/1000
+            min_dist_idx = i
     if max_dist>dist_threshold:
         max_dist = dist_threshold
-    sampling_rate = st[0].stats.sampling_rate
-
-    #Initiate plot parameters
-    fig,ax = plt.subplots(1,1,figsize = (8,10))
-    plt.xlim(0,max_time-min_time)
-    plt.ylim(0,max_dist+3)
+    
+    # >>>>>>>>>>>>>>> Plot >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    fig,ax = plt.subplots(1,1,figsize = figsize)
+    plt.xlim(xb,xe)
+    plt.ylim(0,max_dist*1.1)
     plt.xticks(size=12)
     plt.yticks(size=12)
     plt.xlabel("Time (s)",fontdict={'size':16})
     plt.ylabel("Distance (km)",fontdict={'size':16})
-    #Plot trace by trace
-    for tr in st:
+       
+    for tr in st:            # Plot trace by trace
         sta = tr.stats.station
         tr_ref_time = read_sac_ref_time(tr) 
         tr_o_value = tr.stats.sac.o
         event_time = tr_ref_time + tr_o_value
-        x_start = event_time - min_time
+        x_start = min_time-event_time
         dist = tr.stats.distance/1000
-        #Normalize the event
-        disp_data = tr.data/(max(tr.data) - min(tr.data))
+        
+        if dist>max_dist:
+            continue
+        
+        disp_data = tr.data
+        if normalize==True:  # Normalize the waveform
+            disp_data = tr.data/(max(tr.data) - min(tr.data))
         disp_data = disp_data*scaling_factor
+        
+        # >>>>>>>>>>>>>> Get align_shift for alignment >>>>>>>>>>>>>>>>>>
+        if align == None:
+            align_shift = 0
+        else:
+            align_shift = -tr.stats.sac.__getattribute__(align)
+
+        
         if color == None:
-            plt.plot(np.arange(0,len(tr.data))/sampling_rate+x_start,
+            plt.plot(np.arange(0,len(tr.data))/sampling_rate+x_start+align_shift,
                     disp_data+dist,
                     linewidth = 0.5)
         else:
-            plt.plot(np.arange(0,len(tr.data))/sampling_rate+x_start,
+            plt.plot(np.arange(0,len(tr.data))/sampling_rate+x_start+align_shift,
                     disp_data+dist,
                     color = color,
                     linewidth = 0.5)
         if label_sta:
-            plt.text(0.1,dist+0.2,sta,fontsize=12)
-        #Plot P arrival if available
+            plt.text(0.1+xb,dist+0.02,sta,fontsize=12)
+        
+        #>>>>>>>>>>>>>>>>>>>>> Plot Phase Markers >>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # Plot P arrival if available
         try:
-            a = tr.stats.sac.a
-            rela_a = tr_ref_time + a - min_time
+            a = tr.stats.sac.a - tr.stats.sac.o
             gap = 0.5*max_dist/25
-            plt.plot([rela_a,rela_a],[dist-gap,dist+gap],color='b',linewidth=2)
+            plt.plot([a+align_shift,a+align_shift],[dist-gap,dist+gap],color='b',linewidth=2)
         except:
             pass
-        #Plot S arrival if available
+        
+        # Plot S arrival if available
         try:
-            t0 = tr.stats.sac.t0
-            rela_t0 = tr_ref_time + t0 - min_time
+            t0 = tr.stats.sac.t0 - tr.stats.sac.o
             gap = 0.5*max_dist/25
-            plt.plot([rela_t0,rela_t0],[dist-gap,dist+gap],color='r',linewidth=2)
+            plt.plot([t0+align_shift,t0+align_shift],[dist-gap,dist+gap],color='r',linewidth=2)
         except:
             pass
+        # Plot t5 arrival if available
+        try:
+            t5 = tr.stats.sac.t5 - tr.stats.sac.o
+            gap = 0.5*max_dist/25
+            plt.plot([t5+align_shift,t5+align_shift],[dist-gap,dist+gap],color='c',linewidth=2)
+        except:
+            pass
+        
+        # >>>>> Plot title with magnitude if available >>>>>>>>>>>>>>>>>>>>>>>
         if e_mag != -9:
             plt.title(str(tr_ref_time)+f"_M{e_mag}",fontdict={'size':18})
         else:
             plt.title(str(tr_ref_time),fontdict={'size':18})
-    plt.savefig(os.path.join(out_folder,f"{sac_ref_time.strftime('%Y%m%d%H%M%S')}.png"),format=out_format)
+    
+    # >>>>>>>> Save fig and release memory >>>>>>>>>>>>>>>>>>>>>>
+    plt.savefig(os.path.join(out_folder,f"{event_time.strftime('%Y%m%d%H%M%S')}."+out_format.lower()),format=out_format)
     plt.close(fig)

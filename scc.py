@@ -54,7 +54,7 @@ def wf_scc(tmplt_st,sta_st,ncom):
     dt = temp[0].stats.delta
     ccmax,aamax,i0,cc_list = data_scc(tmplt_data,st_data,ncom)
 
-@jit
+@jit(nopython=True)
 def data_scc(tmplt_data,st_data,ncom):
     """
     Sliding-window cross-correlation between template and target waveform
