@@ -96,3 +96,9 @@ class WY_para():
         f.close()
         self.dict["wells"]=tmp_arr
         f.close()
+    def __str__(self):
+        return "%s" %str(self.dict.keys())
+    def __repr__(self):
+        return "%s" %str(self.dict.keys())
+    def __getitem__(self,item):
+        return self.dict[item]

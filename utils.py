@@ -136,6 +136,8 @@ def extract_set_info(pth,sta_file,depth=2):
                                 e_times.append(tr.stats.endtime)
                     except:           # not seis file
                         pass
+            else:
+                continue
             if len(juldays) > 0:
                 availdays.append(sorted(juldays))
     if len(availdays)>0 and len(availdays)!= len(netstas):
@@ -199,7 +201,7 @@ def read_sac_ref_time(tr):
     sac_ref_time = UTCDateTime(year,month,day,nzhour,nzmin,nzsec)+nzmsec
     return sac_ref_time
 
-def get_st(net,sta,starttime,endtime,f_folder,pad=False,fill_value=0):
+def get_st(net,sta,starttime,endtime,f_folder):
     """
     Read and return waveform between starttime and endtime by specified
     net and station in designated folder. It will merge waveform if include
@@ -207,22 +209,28 @@ def get_st(net,sta,starttime,endtime,f_folder,pad=False,fill_value=0):
     
     The return is a obspy Stream object
     """
+    inc_list=[]
+    for file in os.listdir(f_folder):
+        file_path = os.path.join(f_folder,file)
+        try:
+            st = obspy.read(file_path,headonly=True)
+        except:
+            continue
+        t1,t2 = st[0].stats.starttime,st[0].stats.endtime
+        if t2 < starttime or t1 > endtime \
+            or st[0].stats.network != net\
+            or st[0].stats.station != sta:
+            continue
+        else:
+            inc_list.append(file_path)
+    #Read in data
     st = Stream()
-    try:
-        st += obspy.read(os.path.join(f_folder,f"*{sta}*"))
-    except:
-        return st
-    st = st.select(network=net)
+    for path in inc_list:
+        st += obspy.read(path)
     if len(st) == 0:
         pass
     else:
-        if len(st)>3:
-            st = st.merge()
-        if st[0].stats.starttime>=endtime or \
-           st[0].stats.endtime<=starttime:
-            st = Stream()
-        else:
-            st.trim(starttime,endtime,pad=pad,fill_value=fill_value)
+        st.trim(starttime,endtime)
     return st
 
 def get_st_SC(net,sta,starttime,endtime,f_folder,pad=False,fill_value=0):
