@@ -7,6 +7,58 @@ import glob
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+
+class DD():
+    def __init__(self,reloc_file="hypoDD.reloc"):
+        self.dict,_ = load_DD(reloc_file)
+        self.locs = []
+        for key in self.dict.keys():
+            lon = self.dict[key][0]
+            lat = self.dict[key][1]
+            dep = self.dict[key][2]
+            mag = self.dict[key][3]
+            self.locs.append([lon,lat,dep,mag])
+        self.locs = np.array(self.locs)
+    def plot(self,xlim=[],ylim=[],markersize=6,size_ratio=1,imp_mag=3):
+
+        plt.scatter(self.locs[:,0],
+                    self.locs[:,1],
+                    (self.locs[:,3]+2)*size_ratio,
+                    edgecolors = "k",
+                    facecolors='none',
+                    marker='o',
+                    alpha=1)
+
+        kk = np.where(self.locs[:,3]>=imp_mag)
+        if len(kk)>0:
+            imp = plt.scatter(self.locs[kk,0],
+                        self.locs[kk,1],
+                        (self.locs[kk,3]+2)*size_ratio*5,
+                        edgecolors ='r',
+                        facecolors='none',
+                        marker='*',
+                        alpha=1)
+            plt.legend([imp],[f"M$\geq${format(imp_mag,'4.1f')}"])
+        if len(xlim) != 0:
+            plt.xlim(xlim)
+        if len(ylim) != 0: 
+            plt.ylim(ylim)
+        plt.xlabel("Longitude")
+        plt.ylabel("Latitude")
+        plt.show()
+    
+    def __repr__(self):
+        _qty = f"HypoDD relocation catlog with {len(self.dict.keys())} events\n"
+        _mag = f"Magnitue range is: {format(np.min(self.locs[:,3]),'4.1f')} to {format(np.max(self.locs[:,3]),'4.1f')}\n"
+        _lon = f"Longitude range is: {format(np.min(self.locs[:,0]),'8.3f')} to {format(np.max(self.locs[:,0]),'8.3f')}\n"
+        _lat = f"Latitude range is: {format(np.min(self.locs[:,1]),'7.3f')} to {format(np.max(self.locs[:,1]),'7.3f')}\n"
+        _dep = f"Depth range is: {format(np.min(self.locs[:,2]),'4.1f')} to {format(np.max(self.locs[:,2]),'4.1f')}\n"
+        return _qty+_mag+_lon+_lat+_dep
+    
+    def __getitem__(self,key):
+        return self.dict[key]
+
 
 def event_sel(evid_list=[],event_dat="event.dat",event_sel="event.sel"):
     '''
@@ -391,6 +443,7 @@ def hypoDD_mag_mapper(reloc_file,out_sum):
             event_mag = int(line[123:126])*0.01
             event_mag_list[event_id]=event_mag
     f_obj.close()
+    print(len(event_mag_list.keys()))
     #add in the magnitude
     new_dd = []
     with open(reloc_file,"r") as f_obj:

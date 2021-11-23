@@ -21,6 +21,20 @@ def xcorr(data1,data2,max_shift_num):
     cross_list = np.array(cross_list)
     return cross_list.ravel()
 
+@jit(nopython=True)
+def xcorr_jit(data1,data2,max_shift_num):
+    len1 = len(data1)
+    len2 = len(data2)
+    min_len = min(len1,len2)
+    cross_list = np.zeros(2*max_shift_num+1)
+    for i,shift_num in enumerate(np.arange(-max_shift_num,max_shift_num+1,1)):
+        if shift_num<0:
+            cross_list[i] = np.dot(data1[:min_len+shift_num],data2[-shift_num:min_len])
+        else:
+            cross_list[i] = np.dot(data2[:min_len-shift_num],data1[shift_num:min_len])
+
+    return cross_list
+
 def plot_corr(ax,sta_pair,base="CFs_Result",xlim=[-10,10],cmap="PiYG"):
     """
     Plot the ambient noise results of one station pair on ax delivered.

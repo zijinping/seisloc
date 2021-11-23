@@ -25,6 +25,7 @@ import subprocess
 import time
 import pickle
 
+
 def invmod2vel(out_file,vp_file,vs_file="",ps_ratio=1.73,vpdamp=1,vsdamp=1):
     """
     Convert hypoinverse velocity model to the velest velocity model
@@ -375,3 +376,59 @@ def arc_filt(arc_file="Y2000.phs",min_obs=8):
         for line in filt_cont:
             f.write(line)
     f.close()
+
+class Hypoinv():
+    def __init__(self,sum_file="out.sum"):
+        self.dict_evid = load_sum_evid(sum_file)
+        self.dict_evstr = load_sum_evstr(sum_file)
+        self.locs = []
+        for key in self.dict_evid.keys():
+            lon = self.dict_evid[key][1]
+            lat = self.dict_evid[key][2]
+            dep = self.dict_evid[key][3]
+            mag = self.dict_evid[key][4]
+            self.locs.append([lon,lat,dep,mag])
+        self.locs = np.array(self.locs)
+        
+    def plot(self,xlim=[],ylim=[],markersize=6,size_ratio=1,imp_mag=3):
+
+        plt.scatter(self.locs[:,0],
+                    self.locs[:,1],
+                    (self.locs[:,3]+2)*size_ratio,
+                    edgecolors = "k",
+                    facecolors='none',
+                    marker='o',
+                    alpha=1)
+
+        kk = np.where(self.locs[:,3]>=imp_mag)
+        if len(kk)>0:
+            imp = plt.scatter(self.locs[kk,0],
+                        self.locs[kk,1],
+                        (self.locs[kk,3]+2)*size_ratio*5,
+                        edgecolors ='r',
+                        facecolors='none',
+                        marker='*',
+                        alpha=1)
+            plt.legend([imp],[f"M$\geq${format(imp_mag,'4.1f')}"])
+        if len(xlim) != 0:
+            plt.xlim(xlim)
+        if len(ylim) != 0: 
+            plt.ylim(ylim)
+        plt.xlabel("Longitude")
+        plt.ylabel("Latitude")
+        plt.show()
+    
+    def __repr__(self):
+        _qty = f"Hypoinverse catlog with {len(self.dict_evid.keys())} events\n"
+        _mag = f"Magnitue range is: {format(np.min(self.locs[:,3]),'4.1f')} to {format(np.max(self.locs[:,3]),'4.1f')}\n"
+        _lon = f"Longitude range is: {format(np.min(self.locs[:,0]),'8.3f')} to {format(np.max(self.locs[:,0]),'8.3f')}\n"
+        _lat = f"Latitude range is: {format(np.min(self.locs[:,1]),'7.3f')} to {format(np.max(self.locs[:,1]),'7.3f')}\n"
+        _dep = f"Depth range is: {format(np.min(self.locs[:,2]),'4.1f')} to {format(np.max(self.locs[:,2]),'4.1f')}\n"
+        return _qty+_mag+_lon+_lat+_dep
+    
+    def __getitem__(self,key):
+        if isinstance(key,str):
+            return self.dict_evstr[key]
+        elif isinstance(key,int):
+            return self.dict_evid[key]
+

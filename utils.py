@@ -149,10 +149,10 @@ def extract_set_info(pth,sta_file,depth=2):
     setinfo["stalats"] = stalats
     setinfo["netstas"] = netstas
     setinfo["center"] = [np.mean(stalons),np.mean(stalats)]
-    logging.info("extract set info programme done")
     f = open(os.path.join(parent_path,"setinfo.pkl"),'wb')
     pickle.dump(setinfo,f)
     f.close()
+    logging.info("extract set info programme done")
     return setinfo
 
 def load_sta(sta_file):
@@ -201,7 +201,7 @@ def read_sac_ref_time(tr):
     sac_ref_time = UTCDateTime(year,month,day,nzhour,nzmin,nzsec)+nzmsec
     return sac_ref_time
 
-def get_st(net,sta,starttime,endtime,f_folder):
+def get_st(net,sta,starttime,endtime,f_folder,pad=False,fill_value=None):
     """
     Read and return waveform between starttime and endtime by specified
     net and station in designated folder. It will merge waveform if include
@@ -230,10 +230,10 @@ def get_st(net,sta,starttime,endtime,f_folder):
     if len(st) == 0:
         pass
     else:
-        st.trim(starttime,endtime)
+        st.trim(starttime,endtime,pad=pad,fill_value=fill_value)
     return st
 
-def get_st_SC(net,sta,starttime,endtime,f_folder,pad=False,fill_value=0):
+def get_st_SC(net,sta,starttime,endtime,f_folder,pad=False,fill_value=None):
     """
     A modified get_st function for Agency data which stores data by UTM-8 and days.
     """

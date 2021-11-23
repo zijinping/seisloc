@@ -479,30 +479,28 @@ def ncsn2pha(source_file,target_file):
             f.write(line)
             f.write('\n')
                 
-def sc2phs(file_list=[],region_condition="-9/-9/-9/-9",mag_condition=-9):
-    #initiate
-    lon_filt=True
-    lat_filt=True
-    mag_filt=True #filt magnitude
-    time_filt=True
-    lon_min,lon_max,lat_min,lat_max= re.split("/",region_condition)
-    if lon_min=="-9":
-        lon_filt=False
-    else:
-        lon_min = float(lon_min)
-        lon_max = float(lon_max)
-    if lat_min=="-9":
-        lat_filt=False
-    else:
-        lat_min = float(lat_min)
-        lat_max = float(lat_max)
-    if mag_condition==-9:
-        mag_filt = False
+def sc2phs(file_list=[],lonlats=[-999,-999,-999,-999],magThreshold=-9):
+    """
+    convert Sichuan earthquake administration report into file could be
+    recognized by Hypoinverse.
+    """
     if file_list == []:
         for file in os.listdir("./"):
             if file[-4:]==".adj":
                 file_list.append(file)
     file_list.sort()
+
+    lon_filt=True
+    lat_filt=True
+    mag_filt=True #filt magnitude
+    time_filt=True
+    lon_min,lon_max,lat_min,lat_max= lonlats
+    if lon_min==-999:
+        lon_filt=False
+    if lat_min==-999:
+        lat_filt=False
+    if magThreshold==-9:
+        mag_filt = False
     #initiate part
     output_content=[]
     input_content = []
@@ -555,7 +553,7 @@ def sc2phs(file_list=[],region_condition="-9/-9/-9/-9",mag_condition=-9):
             else:
                 e_mag=float(e_mag)
                 if mag_filt:
-                    if e_mag < mag_condition:
+                    if e_mag < magThreshold:
                         record_status=False
                         continue
             if record_status==True:
@@ -574,6 +572,13 @@ def sc2phs(file_list=[],region_condition="-9/-9/-9/-9",mag_condition=-9):
                 net = line[0:2]
                 sta = re.split(" +",line[3:8])[0]
             p_type = line[17:19]
+            p_weight = float(line[25:28])
+            if p_weight >= 0.75:
+                weightCode = 1
+            elif p_weight >= 0.5:
+                weightCode = 2
+            elif p_weight >= 0.0:
+                weightCode = 3
             p_hour = line[32:34]
             p_minute = line[35:37]
             p_seconds = float(line[38:43])
@@ -586,12 +591,12 @@ def sc2phs(file_list=[],region_condition="-9/-9/-9/-9",mag_condition=-9):
                 except:
                     continue
             if p_type =="Pg":
-                part1 = sta.ljust(5," ")+net+"  SHZ IPU2"+e_year+e_month+e_day+p_hour+p_minute+" "+str(int(p_seconds*100)).zfill(4)
+                part1 = sta.ljust(5," ")+net+"  SHZ IPU"+str(weightCode)+e_year+e_month+e_day+p_hour+p_minute+" "+str(int(p_seconds*100)).zfill(4)
                 part2 = str(int(p_residual*100)).rjust(4," ")+"  0    0   0   0"
                 output_content.append(part1+part2)
             elif p_type == "Sg":
-                part1 = sta.ljust(5," ")+net+"  SHZ    2"+e_year+e_month+e_day+p_hour+p_minute+"    0   0  0 "
-                part2 = str(int(p_seconds*100)).zfill(4)+"ES 0"+str(int(p_residual*100)).rjust(4," ")
+                part1 = sta.ljust(5," ")+net+"  SHZ     "+e_year+e_month+e_day+p_hour+p_minute+"    0   0  0 "
+                part2 = str(int(p_seconds*100)).zfill(4)+"ES "+str(weightCode)+str(int(p_residual*100)).rjust(4," ")
                 output_content.append(part1+part2)
     output_content.append(format(str(event_id).rjust(72," ")))
     with open("out.phs","w") as f:

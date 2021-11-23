@@ -13,8 +13,12 @@ from obspy.clients.fdsn import Client
 import pandas as pd
 import logging
 from tqdm import tqdm
+from seisloc.noise import xcorr
+from numpy import polyfit
+import glob
 
-def gen_tele_files( dataset_path,
+
+def genTeleFiles( dataset_path,
                     sta_file,
                     min_mag,
                     dist_range,
@@ -22,12 +26,12 @@ def gen_tele_files( dataset_path,
                     taup_model="iasp91",
                     tele_dir = "tele_event"):
     """
-    This function first search for suitable tele-event based on the contion provided:
+    Function first searches for suitable tele-event based on condtions provided:
         > starttime
         > endtime
         > minmagnitude
         > distance range in degree[d1, d2]
-    The second step is calculate the arrival time for stations and write into document for further process.
+    Then calculates arrival times for stations and writes into files.
     
     Parameters:
       dataset_path: the path of the dataset. The program will extract information
@@ -54,7 +58,9 @@ def gen_tele_files( dataset_path,
     
     sta_dict = load_sta(sta_file)
     client=Client(client_name)
-    event_list=client.get_events(starttime=starttime,endtime=endtime,minmagnitude=min_mag)
+    event_list=client.get_events(starttime=starttime,
+                                 endtime=endtime,
+                                 minmagnitude=min_mag)
     
     columns=["e_id","e_time","e_lon","e_lat","e_dep","e_dist","e_mag","e_mag_type"]
     df = pd.DataFrame(columns=columns)
@@ -111,8 +117,13 @@ def gen_tele_files( dataset_path,
         f.close()
 
 
-def read_tele_phase(cont,sta_sel=[]):
-    sta_pha_list=[]              # Array to store the phase arrival time information
+def readTelePhase(cont):
+    """
+    Read stations tele event arrival time from the tele file
+    Parameters:
+    |    cont: content list of tele file
+    """
+    staPhaList=[]              # Array to store the P&S phase time information
     for line in cont[1:]:
         netsta,_P_time,_S_time,_dist=line.split()
         net = netsta[:2]
@@ -120,168 +131,350 @@ def read_tele_phase(cont,sta_sel=[]):
         P_time = float(_P_time)
         S_time = float(_S_time)
         dist=float(_dist)
+        staPhaList.append([netsta,P_time,S_time,dist])
+    return staPhaList
 
-        if len(sta_sel) == 0:
-            sta_pha_list.append([netsta,P_time,S_time,dist])
-        elif sta in sta_sel:                # Only process station in station list
-            sta_pha_list.append([netsta,P_time,S_time,dist])
-    return sta_pha_list
+def trimTeleWf(teleFile,wfRoot,pBefore=50,sAfter=50,mode="normal"):
+    """
+    Description:
+        To plot tele-event waveform, the steps are:
+            1. Generate tele-event files
+            2. Cut tele-event waveforms of all stations
+            3. Make plot of tele-event waveforms
+        this functions corresponds to step 2, the waveforms of all stations will
+        be saved in one miniseed file under the same tele-file folder with the
+        same title but different suffix(".mseed").
 
-def tele_file_plot(tele_file,
-              wf_dir = "day_data",
-              sta_sel=[],
-              sta_exclude = [],
-              sta_highlight=[],
-              plot_phase = "P",
-              p_method="dist",
-              bp_range= [0.5,2],
-              x_offsets=[10,20],
-              y_offset_ratio=[0.5,0.5],
-              wf_normalize=True,
-              wf_scale_factor=1,
-              label_stas = [],
+        Retrieve from online resources to be developed
+
+    Parameters:
+        teleFile: the path of tele-file
+          wfRoot: root path for waveform library
+         pBefore: start trim point is pBefore seconds before the earliest P
+          sAfter: end trim point the pAster seconds after the latest S
+            mode: default "normal". "SC" indicates retrieving Sichuan
+                    Agency Dataset,uncommon used
+    """
+
+    logger = logging.getLogger()
+    logger.info(f"Trim tele waveform of tele-event: {teleFile}")
+    
+    #-------------- load tele file---------------------------------------------
+    cont=[]                                 
+    with open(teleFile,"r") as f:          
+        for line in f:
+            cont.append(line.rstrip())
+    if len(cont)==1:               # No record, first line is event line
+        logger.warn("No station record in tele_file")
+        return                              
+    
+    _etime,_elon,_elat,_edep,_emag,etype = cont[0].split()
+    etime=UTCDateTime(_etime[:-1])
+    staPhaList = readTelePhase(cont)
+
+    min_P = staPhaList[0][1]
+    max_S = staPhaList[-1][2]
+                     
+    startTime = etime+min_P-pBefore
+    endTime = etime+max_S+sAfter
+
+    stsum = Stream()
+    for staPhase in tqdm(staPhaList):
+        netsta = staPhase[0]
+        net = netsta[:2]
+        sta = netsta[2:]
+
+        wfFolder = os.path.join(wfRoot,sta) # Waveform folder
+        if mode == "normal":
+            st=get_st(net,sta,startTime,endTime,wfFolder,pad=True)
+        if mode == "SC":
+            st=get_st_SC(net,sta,startTime,endTime,wfFolder,pad=True)
+        if len(st) != 0:                                  # len(st)==0 means no waveform
+            st = st.select(component="*Z")                # Use Z component
+            stsum.append(st[0])
+    stsum.write(os.path.join(teleFile[:-5]+".mseed"))
+
+def trimTeleWfs(teleRoot="tele_event",wfRoot="day_data"):
+    teleFiles = glob.glob(os.path.join(teleRoot,"*tele"))
+    for teleFile in teleFiles:           # Loop for each event
+        trimTeleWf(teleFile,wfRoot=wfRoot)
+
+def axisRange(staPhaList,plotPhase,xOffsets,yOffsetRatios):
+    """
+    Get the axis range for tele waveform plot
+    """
+    minP = staPhaList[0][1]
+    maxP = staPhaList[-1][1]
+    minS = staPhaList[0][2]
+    maxS = staPhaList[-1][2]
+    minDist = staPhaList[0][3]
+    maxDist = staPhaList[-1][3]
+
+    ystart = minDist-yOffsetRatios[0]*(maxDist-minDist+0.1)                        
+    yend = maxDist+yOffsetRatios[1]*(maxDist-minDist+0.1)
+
+    if plotPhase == "P":
+        xstart = minP+xOffsets[0]
+        xend = maxP+xOffsets[1]
+
+    elif plotPhase == "S":
+        xstart = minS+xOffsets[0]
+        xend = maxS+xOffsets[1]
+
+    elif plotPhase == "PS":
+        xstart = minP+xOffsets[0]
+        xend = maxS+xOffsets[1]
+    else:
+        raise Exception(f"'plotPhase' parameter {plotPhase} not in ['P','S','PS']")
+        
+    return xstart,xend,ystart,yend
+
+def plotTeleWf(teleFile,
+              wfRoot = "day_data",
+              staSel="all",
+              staExclude = [],
+              staHighlight=[],
+              plotPhase = "P",
+              bpRange= [0.5,2],
+              xOffsets=[-10,20],
+              yOffsetRatios=[0.5,0.5],
+              wfNormalize=True,
+              wfScaleFactor=1,
+              labelStas = "all",
               figsize=(6,8),
               linewidth=1,
-              o_format="pdf",
-              from_saved_wf=False,
-              save_result_wf=True):
+              tickHeight=0.05,
+              oFormat="pdf"):
     """
     Parameters:
-          wf_dir: The folder containing wf data in strcture wf_dir/sta_name/'wf files'
-         sta_sel: stations selected for plot, empty for all stations
-     sta_exclude: stations excluded in the plot,used for problem staion
-   sta_highlight: station waveform to be highlighted will be drawn in green
-      plot_phase: "P","S" or "PS". "P" only plot P arrival, "S"  only plot S arrival.
+          wfRoot: The folder containing wf data in strcture wf_dir/sta_name/'wf files'
+         staSel: list or , station list selected for plot, "all": plot all
+     staExclude: stations excluded in the plot,used for problem staion
+   staHighlight: station waveform to be highlighted will be drawn in green
+      plotPhase: "P","S" or "PS". "P" only plot P arrival, "S"  only plot S arrival.
                     "PS" means both P arrival and S arrival will be presented
-        p_method: 'dist' means plot by distance, "average" means the vertical 
-                  gap between stations are the same
-    from_save_wf: load saved miniseed waveform from previous run
-  save_result_wf: miniseed file will be saved the same name will telefile
-      label_stas: False means no label, empty list means all, else label station in list
+      labelStas: False means no label, empty list means all, else label station in list
     """
     logger = logging.getLogger()
-    logger.info(tele_file)
+    logger.info("plot tele event: "+teleFile)
 
-    if from_saved_wf == True:
-        mseed_file = tele_file.rsplit(".",1)[0]+".mseed"
-        if not os.path.exists(mseed_file):
-            logging.error("mseed file not exits, set from_saved_wf False")
-            from_saved_wf = False
-        else:
-            saved_st = obspy.read(mseed_file)
+    mseed_file = teleFile.rsplit(".",1)[0]+".mseed"
+    if not os.path.exists(mseed_file):
+        logging.error("mseed file not exits, did you run the trimTeleWf?")
+        return                              # end the programme
+    else:
+        saved_st = obspy.read(mseed_file)
     #-------------- load tele file---------------------------------------------
     cont=[]                                 # Store content from file
-    with open(tele_file,"r") as f:          # Load starts
+    with open(teleFile,"r") as f:          # Load starts
         for line in f:
             cont.append(line.rstrip())
     f.close()                               # Load finishes
     if len(cont)==1:
         logger.warn("No station record in tele_file")
         return                              # No record, first line is event line
-    _e_time,_e_lon,_e_lat,_e_dep,_e_mag,e_type = cont[0].split()
-    e_time=UTCDateTime(_e_time[:-1])
-    e_lon=float(_e_lon)
-    e_lat=float(_e_lat)
-    e_mag=float(_e_mag)
+    _etime,_elon,_elat,_edep,_emag,etype = cont[0].split()
+    etime=UTCDateTime(_etime[:-1])
+    elon=float(_elon)
+    elat=float(_elat)
+    emag=float(_emag)
 
-    sta_pha_list = read_tele_phase(cont,sta_sel)
+    staPhaList = readTelePhase(cont)
 
-    try:
-        del min_P,max_P,max_S,min_dist,max_dist # Remove parameters
-    except:
-        pass
-    min_P = sta_pha_list[0][1]
-    max_P = sta_pha_list[-1][1]
-    min_S = sta_pha_list[0][2]
-    max_S = sta_pha_list[-1][2]
-    min_dist = sta_pha_list[0][3]
-    max_dist = sta_pha_list[-1][3]
-
-    y_start = min_dist-y_offset_ratio[0]*(max_dist-min_dist-0.1)                        
-    y_end = max_dist+y_offset_ratio[1]*(max_dist-min_dist+0.1)                      
-
-    if plot_phase == "P":
-        x_start = min_P-x_offsets[0]
-        x_end = max_P+x_offsets[1]
-
-    elif plot_phase == "S":
-        x_start = min_S-x_offsets[0]
-        x_end = max_S+x_offsets[1]
-
-    elif plot_phase == "PS":
-        x_start = min_P-x_offsets[0]
-        x_end = max_S+x_offsets[1]
-    else:
-        raise Exception(f"'plot_phase' parameter {plot_phase} not in 'P','S','PS'")
+    xstart,xend,ystart,yend = axisRange(staPhaList,plotPhase,xOffsets,yOffsetRatios)
 
     plt.close()                               # close previous figure as this is inside loop 
     fig,ax = plt.subplots(1,1,figsize=figsize) # Initiate a figure with size 8x10 inch        
 
-    plt.axis([x_start,x_end,y_start,y_end]) # Set axis
-    tele = re.split("/",tele_file)[-1]
-    title = tele[:4]+"-"+tele[4:6]+"-"+tele[6:8]+" "+tele[8:10]+":"+tele[10:12]+":"+tele[12:14]
-    plt.title(f'Tele Event {title} M{e_mag}')           # Set the title
+    plt.axis([xstart,xend,ystart,yend]) # Set axis
+    tele = re.split("/",teleFile)[-1]
+    title = etime.strftime("%Y-%m-%d %H:%M:%S")
+    plt.title(f'Tele Event {title} M{emag}')           # Set the title
     plt.xlabel("Time (s)")
     plt.ylabel("Distance (km)")
     # Draw event waveform, P and S arrival markers for each station
-    st_sum = Stream()
-    for sta_phase in tqdm(sta_pha_list):
-        netsta = sta_phase[0]
+    for staPhase in tqdm(staPhaList):
+        netsta = staPhase[0]
         net = netsta[:2]
         sta = netsta[2:]
-        if sta in sta_exclude:
+
+        if staSel != "all": # Then staSel should be a list
+            if sta not in staSel:
+                continue
+        if sta in staExclude:
             continue
-        P_time = sta_phase[1]
-        S_time = sta_phase[2]
-        dist = sta_phase[3]
-        if from_saved_wf==True:
-            st = saved_st.select(network=net,station=sta)
-            st.trim(starttime = e_time+x_start,
-                    endtime = e_time+x_end,
+
+        P_time = staPhase[1]
+        S_time = staPhase[2]
+        dist = staPhase[3]
+        st = saved_st.select(network=net,station=sta)
+        st.trim(starttime = etime+xstart,
+                    endtime = etime+xend,
                     pad = True)
-        else:
-            wf_folder = os.path.join(wf_dir,sta) # Waveform folder
-            st=get_st(net,sta,e_time+x_start,e_time+x_end,wf_folder,pad=True) 
+
         if len(st) != 0:                                  # len(st)==0 means no waveform
             st = st.select(component="*Z")                # Use Z component
-            st_sum.append(st[0])
             sampling_rate = st[0].stats.sampling_rate
             chn = st[0].stats.channel
             st[0].detrend("linear")                       # Remove linear trend
             st[0].detrend("constant")                     # Remove mean
-            st.filter("bandpass",freqmin=bp_range[0],freqmax=bp_range[1],corners=2)
-            if wf_normalize:
+            st.filter("bandpass",freqmin=bpRange[0],freqmax=bpRange[1],corners=2)
+            if wfNormalize:
                 data = st[0].data.copy()
                 if max(data) != min(data):
                     st[0].data=data/(max(data) - min(data)) # Normalize data
-                st[0].data = st[0].data * wf_scale_factor
+                st[0].data = st[0].data * wfScaleFactor
             # Draw waveform
-            if sta in sta_highlight:                               # color='k' means black
-                plt.plot(np.arange(0,len(st[0].data))*1/sampling_rate+x_start,
+            if sta in staHighlight:                               # color='k' means black
+                plt.plot(np.arange(0,len(st[0].data))*1/sampling_rate+xStart,
                          st[0].data+dist,
                          color='darkred',
                          linewidth=3*linewidth)
             else:                                         # color='g' means green
-                plt.plot(np.arange(0,len(st[0].data))*1/sampling_rate+x_start,
+                plt.plot(np.arange(0,len(st[0].data))*1/sampling_rate+xstart,
                          st[0].data+dist,
                          color='k',
                          linewidth=linewidth)
             # Plot P arrival marker in red
-            P_marker, = plt.plot([P_time,P_time],[dist-0.5,dist+0.5],color='r',linewidth=2)
+            P_marker, = plt.plot([P_time,P_time],[dist-tickHeight,dist+tickHeight],color='r',linewidth=2)
             # Plot S arrival marker in blue
-            S_marker, = plt.plot([S_time,S_time],[dist-0.5,dist+0.5],color='b',linewidth=2)
-            if label_stas!=False and len(label_stas)==0:
-                plt.text(x_start,dist+0.1,f'{sta}',color='darkred',fontsize=12)
-            elif label_stas!=False and sta in label_stas:
-                plt.text(x_start,dist+0.1,f'{sta}',color='darkred',fontsize=12)
+            S_marker, = plt.plot([S_time,S_time],[dist-tickHeight,dist+tickHeight],color='b',linewidth=2)
+            if labelStas=="all":
+                plt.text(xstart,dist,f'{sta}',color='darkred',fontsize=12)
+            elif sta in labelStas:
+                plt.text(xstart,dist,f'{sta}',color='darkred',fontsize=12)
     plt.legend([P_marker,S_marker],['tele P','tele S'],loc='upper right')
     plt.tight_layout()
-    if o_format.lower()=="pdf":
-        plt.savefig(os.path.join(tele_file[:-5]+".pdf"))
-    if o_format.lower()=="jpg" or o_format.lower=="jpeg":
-        plt.savefig(os.path.join(tele_file[:-5]+".jpg"))
-    if o_format.lower()=="png":
-        plt.savefig(os.path.join(tele_file[:-5]+".png"))
+    if oFormat.lower()=="pdf":
+        plt.savefig(os.path.join(teleFile[:-5]+".pdf"))
+    if oFormat.lower()=="jpg" or oFormat.lower=="jpeg":
+        plt.savefig(os.path.join(teleFile[:-5]+".jpg"))
+    if oFormat.lower()=="png":
+        plt.savefig(os.path.join(teleFile[:-5]+".png"))
 
-    if save_result_wf == True:
-        st_sum.write(os.path.join(tele_file[:-5]+".mseed"))
+def plotTeleWfs(teleRoot="tele_event",wfRoot="day_data",
+                          staSel='all',
+                          staExclude = [],
+                          plotPhase = "P",
+                          bpRange= [0.5,2],
+                          xOffsets=[-10,20],
+                          yOffsetRatios=[0.01,0.05],
+                          wfNormalize=True,
+                          wfScaleFactor=0.06,
+                          labelStas = "all",
+                          figsize=(8,12),
+                          linewidth=0.5,
+                          tickHeight=0.01,
+                          oFormat="png"):
+    teleFiles = glob.glob(os.path.join(teleRoot,"*tele"))
+    for teleFile in teleFiles:           # Loop for each event
+            plotTeleWf(teleFile,
+                          wfRoot = wfRoot,
+                          staSel=staSel,
+                          staExclude = staExclude,
+                          plotPhase = plotPhase,
+                          bpRange= bpRange,
+                          xOffsets=xOffsets,
+                          yOffsetRatios=yOffsetRatios,
+                          wfNormalize=wfNormalize,
+                          wfScaleFactor=wfScaleFactor,
+                          labelStas = labelStas,
+                          figsize=figsize,
+                          linewidth=linewidth,
+                          tickHeight=tickHeight,
+                          oFormat=oFormat)
+
+
+def plotTeleDiffs(plotPhase="P",
+                 tb=-5,
+                 te=20,
+                 root="tele_event",
+                 maxlag=100,
+                 freqRange=[0.5,2],
+                 decimateFactor=5,
+                 threshold = 0.5,
+                 figsize=(10,6)):
+    """
+    This function reads in the corresponding tele event minseed files,
+    do cross-correlation to find large shift stations and make plot.
+    
+    Parameter:
+      maxlag: maxlag data points. The total calculation times is 2*maxlag+1
+    """
+    logger = logging.getLogger()
+#---------------------------------------------------------------------------    
+    tele_files = glob.glob(os.path.join(root,"*tele"))
+    for tele_file in tqdm(tele_files):
+        with open(tele_file,'r') as f:
+            lines = f.readlines()
+        f.close()
+
+        st = obspy.read(tele_file[:-4]+"mseed")
+        st.detrend("linear")
+        st.detrend("constant")
+        st_new = st.decimate(factor=decimateFactor)
+        st_new.filter("bandpass",freqmin=freqRange[0],freqmax=freqRange[1],zerophase=True)
+
+        ref_sta_set =False
+
+        maxtimes = []
+        sta_sequence = []
+        delta = st_new[0].stats.delta
+        
+        str_time,_,_,_dep,_mag,type = lines[0].split()
+        etime = UTCDateTime(str_time)
+        
+        for line in lines[1:]:
+            line = line.rstrip()
+            netsta,_p,_s,_dist = line.split()
+            net = netsta[:2]
+            sta = netsta[2:]
+            st_sel = st_new.select(network=net,station=sta,component='*Z')
+            if len(st_sel)==0:
+                continue
+            if plotPhase == "P":
+                ttb = etime + float(_p) + tb
+                tte = etime + float(_p)+ te
+            if plotPhase == "S":
+                ttb = etime + float(_s) + tb
+                tte = etime + float(_s)+ te
+            if plotPhase == "PS":
+                ttb = etime + float(_p) + tb
+                tte = etime + float(_s)+ te
+            st_sel = st_sel.trim(starttime=ttb,endtime=tte)
+            sta_tr = st_sel[0]
+            if not ref_sta_set:
+                ref_sta = sta
+                ref_sta_set = True
+                continue
+            ref_tr = st_new.select(station=ref_sta,component="*Z")[0]
+            try:
+                corr_result = xcorr(sta_tr.data,ref_tr.data,maxlag)
+            except:
+                continue
+            corr_result = list(corr_result/(np.linalg.norm(sta_tr.data)*np.linalg.norm(ref_tr.data)))
+            max_corr = max(corr_result)
+            if max_corr < 0.7:
+                continue
+            max_index = corr_result.index(max_corr)
+            maxtimes.append((max_index-maxlag)*delta)
+            sta_sequence.append(sta)
+
+        fig,ax = plt.subplots(1,1,figsize=figsize)
+        try:
+            p = polyfit(np.arange(len(maxtimes)),maxtimes,deg=1)
+        except:
+            continue
+        x = np.linspace(0,len(maxtimes)-1,len(maxtimes))
+        y = x*p[0]+p[1]
+        diffs = maxtimes-y
+        plt.scatter(x,diffs,c=np.abs(diffs),s=40,edgecolor='k',cmap="rainbow",vmin=0.2,vmax=4)
+        #plt.ylim([-1,5])
+        plt.xlim([0,len(maxtimes)])
+        plt.ylabel("Time (s)")
+
+        for i in range(len(sta_sequence)):
+            if np.abs(diffs[i])>threshold:
+                plt.text(i,diffs[i],sta_sequence[i])
+        plt.title(f"Tele Event {etime} M{_mag}")
+        plt.savefig(tele_file[:-4]+"jpg")

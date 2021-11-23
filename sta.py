@@ -1,6 +1,9 @@
 import re
 from obspy.geodetics import gps2dist_azimuth
 import json
+import copy
+import numpy as np
+import matplotlib.pyplot as plt
 
 def sta_dist_pairs(netstas,sta_dict,group_qty=6):
     """
@@ -52,18 +55,34 @@ def load_sta(sta_file):
     with open(sta_file,'r') as f:
         for line in f:
             line = line.rstrip()
-            net,sta,_lon,_lat,_ele,label=re.split(" +",line)
+            net,sta,_lon,_lat,_ele,label=re.split("[ ,;]+",line)
             if net not in sta_dict:
                 sta_dict[net]={}
             if sta not in sta_dict[net]:
-                sta_dict[net][sta] = [float(_lon),float(_lat),int(_ele),label]
+                sta_dict[net][sta] = [float(_lon),float(_lat),int(float(_ele)),label]
     return sta_dict
 
-def to_inv_sta_file(sta_dict,out_file,ele_zero=True):
+def getNet(sta,staFile):
+    staDict = load_sta(staFile)
+    findStatus = False
+    for net in staDict.keys():
+        for key in staDict[net].keys():
+            if key == sta:
+                findStatus = True
+                return net
+    if findStatus == False:
+        raise Exception("Sta not in station file.")
+    return net
+
+def to_inv_sta_file(sta_dict,out_file="sta.inv",ele_zero=True):
     f_inv = open(out_file,'w')
     for net in sta_dict.keys():
         for sta in sta_dict[net].keys():
             lon = sta_dict[net][sta][0]
+            lon_marker="E"
+            if lon < 0:
+                lon_marker = "W"
+                lon = -lon
             lat = sta_dict[net][sta][1]
             ele = sta_dict[net][sta][2]
             label = sta_dict[net][sta][3]
@@ -76,17 +95,17 @@ def to_inv_sta_file(sta_dict,out_file,ele_zero=True):
                 ele = 0
             f_inv.write(format(sta,"<6s")+format(net,"<4s")+"SHZ  "+format(lat_i,">2d")+" "+\
                 format(lat_f*60,">7.4f")+" "+format(lon_i,">3d")+" "+format(lon_f*60,">7.4f")+\
-                "E"+format(ele,">4d")+"\n")
+                lon_marker+format(ele,">4d")+"\n")
     f_inv.close()
 
-def sta2inv(sta_file,out_file):
+def sta2inv(sta_file,out_file="sta.inv",ele_zero=True):
     """
     Convert station file into HYPOINVERSE format
     """
     sta_dict =load_sta(sta_file)
-    to_inv_sta_file(sta_dict,out_file)  # Write into files
+    to_inv_sta_file(sta_dict,out_file,ele_zero=True)  # Write into files
 
-def to_dd_sta_file(sta_dict,out_file,ele_zero=True):
+def to_dd_sta_file(sta_dict,out_file="sta.dd",ele_zero=True):
     f_dd = open(out_file,'w')
     for net in sta_dict.keys():
         for sta in sta_dict[net].keys():
@@ -105,14 +124,14 @@ def to_dd_sta_file(sta_dict,out_file,ele_zero=True):
                    " "+format(ele,'>5d')+"\n")
     f_dd.close()
 
-def sta2dd(sta_file,out_file):
+def sta2dd(sta_file,out_file="sta.dd",ele_zero=True):
     """
     Convert station file into hypoDD format
     """
     sta_dict = load_sta(sta_file)
-    to_dd_sta_file(sta_dict,out_file)  # Write into files
+    to_dd_sta_file(sta_dict,out_file,ele_zero=ele_zero)  # Write into files
 
-def to_vel_sta_file(sta_dict,out_file,ele_zero=True):
+def to_vel_sta_file(sta_dict,out_file="sta.vel",ele_zero=True):
     f_vel = open(out_file,'w')
     f_vel.write("(a5,f7.4,a1,1x,f8.4,a1,1x,i4,1x,i1,1x,i3,1x,f5.2,2x,f5.2,3x,i1)\n")
     sta_count = 1
@@ -130,13 +149,32 @@ def to_vel_sta_file(sta_dict,out_file,ele_zero=True):
     f_vel.write("  \n")   # signal of end of file for VELEST
     f_vel.close()
 
-def sta2vel(sta_file,out_file,ele_zero=True):
+def sta2vel(sta_file,out_file="sta.vel",ele_zero=True):
     """
     Convert station file into VELEST format with 5 characters,
     which is applicable for the update VELEST program modified by Hardy ZI
     """
     sta_dict = load_sta(sta_file)
     to_vel_sta_file(sta_dict,out_file,ele_zero)
+
+def toREAL(sta_dict,outFile):
+    fsta = open(outFile,'w')
+    for net in sta_dict.keys():
+        for sta in sta_dict[net].keys():
+            lon = sta_dict[net][sta][0]
+            lat = sta_dict[net][sta][1]
+            ele = sta_dict[net][sta][2]
+            label = sta_dict[net][sta][3]
+            fsta.write(f"{format(lon,'10.6f')} {format(lat,'10.6f')} {net} {format(sta,'5s')} BHZ {format(ele/1000,'5.3f')}\n")
+    fsta.close()
+
+def sta2REAL(sta_file,out_file):
+    """
+    Convert station file into VELEST format with 5 characters,
+    which is applicable for the update VELEST program modified by Hardy ZI
+    """
+    sta_dict = load_sta(sta_file)
+    toREAL(sta_dict,out_file)
 
 def sta_sel(sta_file,c_lon,c_lat,nets=[],stas=[],radius=100):
     """
@@ -197,4 +235,102 @@ def sta2eqt(sta_file,out_file):
     f.close()
     with open(out_file,'w') as dump_f:
         json.dump(eqt_sta_dict,dump_f)
-    dump_f.close()    
+    dump_f.close()
+
+
+class Sta():
+    def __init__(self,sta_file="/home/zijinping/Dropbox/resources/stations/sta_sum_202110.txt"):
+        self.sta_file = sta_file
+        self.dict = load_sta(sta_file)
+        self.get_locs()
+        
+    def get_locs(self):
+        self.locs = []
+        for net in self.dict.keys():
+            for sta in self.dict[net].keys():
+                lon = self.dict[net][sta][0]
+                lat = self.dict[net][sta][1]
+                ele = self.dict[net][sta][2]
+                marker = self.dict[net][sta][3]
+                self.locs.append([lon,lat,ele])
+        self.locs = np.array(self.locs)
+        
+    def plot(self,xlim=[],ylim=[],markersize=6,size=20,offsets=[0.1,0.1],fontsize=12):
+
+        for net in self.dict.keys():
+            for sta in self.dict[net].keys():
+                lon = self.dict[net][sta][0]
+                lat = self.dict[net][sta][1]
+                if len(xlim) > 0:
+                    if lon<xlim[0] or lon>xlim[1]:
+                        continue
+                if len(ylim) > 0:
+                    if lat<ylim[0] or lat>ylim[1]:
+                        continue
+                plt.scatter(lon,
+                    lat,
+                    s=size,
+                    edgecolors = "k",
+                    facecolors='none',
+                    marker='^',
+                    alpha=1)
+                plt.text(lon+offsets[0],
+                    lat+offsets[1],
+                    sta,
+                    fontsize=fontsize)
+                
+        if len(xlim) != 0:
+            plt.xlim(xlim)
+        if len(ylim) != 0: 
+            plt.ylim(ylim)
+        plt.xlabel("Longitude")
+        plt.ylabel("Latitude")
+        plt.show()
+        
+    def copy(self):
+        return copy.deepcopy(self)
+    
+    def select(self,net=None):
+        if net != None:
+            dict_copy = self.dict.copy()
+            self.dict = {}
+            if isinstance(net,str):
+                self.dict[net] = dict_copy[net]
+            elif isinstance(net,list):
+                for kk in net:
+                    self.dict[kk] = dict_copy[kk]
+        return self
+    
+    def subset(self,xlim=[],ylim=[]):
+        dict_subset = {}
+        for net in self.dict.keys():
+            dict_subset[net] = {}
+            for sta in self.dict[net].keys():
+                lon = self.dict[net][sta][0]
+                lat = self.dict[net][sta][1]
+                if lon>=xlim[0] and lon<=xlim[1] and\
+                   lat>=ylim[0] and lat<=ylim[1]:
+                    dict_subset[net][sta] = self.dict[net][sta]
+        self.dict = dict_subset
+        
+        return self
+    
+    def sta2inv(self):
+        to_inv_sta_file(self.dict,ele_zero=True)
+        
+    def sta2dd(self):
+        to_dd_sta_file(self.dict,ele_zero=True)
+        
+    def sta2vel(self):
+        to_vel_sta_file(self.dict,ele_zero=True)
+    
+    def __repr__(self):
+        self.get_locs()
+        _qty = f"Including {len(self.locs)} stations\n"
+        _lon = f"Longitude range is: {format(np.min(self.locs[:,0]),'8.3f')} to {format(np.max(self.locs[:,0]),'8.3f')}\n"
+        _lat = f"Latitude range is: {format(np.min(self.locs[:,1]),'7.3f')} to {format(np.max(self.locs[:,1]),'7.3f')}\n"
+        _dep = f"Elevation range is: {format(np.min(self.locs[:,2]),'4.1f')} to {format(np.max(self.locs[:,2]),'4.1f')}\n"
+        return _qty+_lon+_lat+_dep
+    
+    def __getitem__(self,net):
+            return self.dict[net]
