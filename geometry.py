@@ -1,15 +1,47 @@
 #-----------------------------------------------------------------------------
 import numpy as np
-from math import acos,sin,cos,pi,radians
+from math import sin,cos,asin,acos,pi,radians
+from numba import jit
 
 def spherical_dist(lon_1,lat_1,lon_2,lat_2):
     """
     Calculate the distance of two postions and return distance in degree
     """
-
-    lon_1,lat_1,lon_2,lat_2 = map(radians,[lon_1,lat_1,lon_2,lat_2])
+    lon_1 = radians(lon_1)
+    lat_1 = radians(lat_1)
+    lon_2 = radians(lon_2)
+    lat_2 = radians(lat_2)
     a=acos(sin(lat_1)*sin(lat_2)+cos(lat_1)*cos(lat_2)*cos(lon_2-lon_1))
     return a*180/pi
+
+@jit(nopython=True)
+def in_rectangle(locs,alon,alat,blon,blat,width):
+    results = np.zeros(locs.shape)
+    dlon1 = blon - alon
+    dlat1 = blat - alat
+    rad_alon = radians(alon)
+    rad_alat = radians(alat)
+    norm1 = (dlon1**2+dlat1**2)**0.5
+    for i in range(locs.shape[0]):
+        ilon = locs[i,0]
+        ilat = locs[i,1]
+        dlon2 = ilon - alon
+        dlat2 = ilat - alat
+        norm2 = (dlon2**2+dlat2**2)**0.5
+        if norm2 == 0:
+            results[i,0]=1
+        proj_ratio = (dlon1*dlon2+dlat1*dlat2)/norm1**2
+
+        rad_jlon = radians(alon+proj_ratio*dlon1)
+        rad_jlat = radians(alat+proj_ratio*dlat1)
+        rad_a=acos(sin(rad_alat)*sin(rad_jlat)+cos(rad_alat)*cos(rad_jlat)*cos(rad_alon-rad_jlon))
+        proj_length = rad_a*180/pi*111.1
+        sin_value = np.abs(dlon1*dlat2+dlon2*dlat1)/(norm1*norm2)
+        vdist = sin_value*norm2
+        if proj_ratio>=0 and proj_ratio<=1 and vdist<=width:
+            results[i,0]=1
+            results[i,1]=proj_length
+    return results
 
 def in_ellipse(xy_list,width,height,angle=0,xy=[0,0]):
     """
@@ -56,17 +88,17 @@ def loc_by_width(lon1,lat1,lon2,lat2,width,direction='right'):
       lon2,lat2: longitude and latitude of tip 2
       direction: The side of new points from tip 1 to tip2 direction
     """
-    sphe_dist = spherical_dist(lon1,lat1,lon2,lat2)
     dlon = lon2 - lon1
     dlat = lat2 - lat1
+    dist=(dlon**2+dlat**2)**0.5
     
     if direction == "right":  # extend width to the right 
-    	delta_lat = -width*(dlon/sphe_dist)    # cos_theta
-    	delta_lon =  width*(dlat/sphe_dist)    # sin_theta
+    	delta_lat = -width*(dlon/dist)    # cos_theta
+    	delta_lon =  width*(dlat/dist)    # sin_theta
 
     if direction == "left":
-    	delta_lat =  width*(dlon/sphe_dist)    # cos_theta
-    	delta_lon = -width*(dlat/sphe_dist)    # sin_theta
+    	delta_lat =  width*(dlon/dist)    # cos_theta
+    	delta_lon = -width*(dlat/dist)    # sin_theta
 
     new_lon1 = lon1 + delta_lon
     new_lat1 = lat1 + delta_lat
@@ -122,3 +154,103 @@ def seismic_path_calculation(e_lon,e_lat,e_dep,in_angle,vel_set):
     print("T_sum, X_sum: ",T_sum,X_sum)
     print(trace_points)
     return np.array(trace_points)
+
+def loc_by_width_sphe(alon,alat,blon,blat,width,direction='left'):
+    """
+    Calculate the points of a rectangle with width and two tips provided.
+    a,b,N,aa,bb is the start point,end point, north point, calculated aa and bb
+    Parameters:
+      alon,alat: longitude and latitude of tip a
+      blon,blat: longitude and latitude of tip b
+          width: width in degree
+      direction: The side of new points from tip a to tip b direction
+    """
+    sphe_dist = spherical_dist(alon,alat,blon,blat)
+    alon,alat,blon,blat,sphe_dist,width=list(map(radians,[alon,alat,blon,blat,sphe_dist,width]))
+    dlon = blon - alon
+    dlat = blat - alat
+    if dlon>0 and dlat<0: # get angle loc1-loc2-N pole
+        if direction=="left":
+            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
+            Nbbb = pi/2-abN
+            bN = pi/2-blat
+            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
+            bblat = pi/2-Nbb
+            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
+            bblon=(blon+bNbb)
+        elif direction=="right":
+            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
+            Nbbb = pi/2+abN
+            bN = pi/2-blat
+            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
+            bblat = pi/2-Nbb
+            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
+            bblon=(blon-bNbb)
+            
+    elif dlon>0 and dlat>0:
+        if direction=="left":
+            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
+            Nbbb = abN
+            bN = pi/2-blat
+            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
+            bblat = pi/2-Nbb
+            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
+            bblon=(blon-bNbb)
+        elif direction=="right":
+            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
+            Nbbb = pi-abN
+            bN = pi/2-blat
+            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
+            bblat = pi/2-Nbb
+            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
+            bblon=(blon+bNbb)
+    elif dlon<0 and dlat>0:
+        if direction=="left":
+            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
+            Nbbb = abN
+            bN = pi/2-blat
+            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
+            bblat = pi/2-Nbb
+            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
+            bblon=(blon-bNbb)
+        elif direction=="right":
+            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
+            Nbbb = pi-abN
+            bN = pi/2-blat
+            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
+            bblat = pi/2-Nbb
+            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
+            bblon=(blon+bNbb)
+    elif dlon<0 and dlat>0:
+        if direction=="right":
+            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
+            Nbbb = abN
+            bN = pi/2-blat
+            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
+            bblat = pi/2-Nbb
+            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
+            bblon=(blon-bNbb)
+        elif direction=="left":
+            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
+            Nbbb = abN
+            bN = pi/2-blat
+            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
+            bblat = pi/2-Nbb
+            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
+            bblon=(blon+bNbb)
+    elif dlon == 0:
+        if direction=='right':
+            bblon = blon+dlat/np.abs(dlat)*width
+        elif direction=="left":
+            bblon = blon-dlat/np.abs(dlat)*width
+        bblat = blat  
+    elif dlat == 0:
+        if direction=='right':
+            bblat = blat-dlon/np.abs(dlon)*width
+        elif direction=="left":
+            bblat = blat+dlon/np.abs(dlon)*width
+        bblon = blon   
+    elif dlat==0 and dlon==0:
+        raise Error("Point a and b shouldn't have the same location")
+    return bblon*180/pi,bblat*180/pi
+
