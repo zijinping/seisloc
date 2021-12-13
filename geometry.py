@@ -30,13 +30,14 @@ def in_rectangle(locs,alon,alat,blon,blat,width):
         norm2 = (dlon2**2+dlat2**2)**0.5
         if norm2 == 0:
             results[i,0]=1
+            continue
         proj_ratio = (dlon1*dlon2+dlat1*dlat2)/norm1**2
 
         rad_jlon = radians(alon+proj_ratio*dlon1)
         rad_jlat = radians(alat+proj_ratio*dlat1)
         rad_a=acos(sin(rad_alat)*sin(rad_jlat)+cos(rad_alat)*cos(rad_jlat)*cos(rad_alon-rad_jlon))
         proj_length = rad_a*180/pi*111.1
-        sin_value = np.abs(dlon1*dlat2+dlon2*dlat1)/(norm1*norm2)
+        sin_value = np.abs(dlon1*dlat2-dlon2*dlat1)/(norm1*norm2)
         vdist = sin_value*norm2
         if proj_ratio>=0 and proj_ratio<=1 and vdist<=width:
             results[i,0]=1
@@ -254,3 +255,23 @@ def loc_by_width_sphe(alon,alat,blon,blat,width,direction='left'):
         raise Error("Point a and b shouldn't have the same location")
     return bblon*180/pi,bblat*180/pi
 
+@jit(nopython=True)
+def densityMap(lonlist,latlist,locs,longap,latgap,near=5):
+    denSums = np.zeros((len(latlist),len(lonlist)))
+    denCounts = np.zeros((len(latlist),len(lonlist)))
+    
+    for i,lat in enumerate(latlist):
+        for j,lon in enumerate(lonlist):
+            for ii in range(-1*near+1,near):
+                for jj in range(-1*near+1,near):
+                    if (i+ii)>=0 and (i+ii)<len(latlist) and (j+jj)>=0 and (j+jj)<len(lonlist):
+                        denCounts[i+ii,j+jj]+=1
+            for loc in locs:
+                loclon = loc[0]
+                loclat = loc[1]
+                if loclon>=lon and loclon<lon+longap and loclat>=lat and loclat<lat+latgap:
+                    for kk in range(-1*near+1,near):
+                        for ll in range(-1*near+1,near):
+                            if (i+kk)>=0 and (i+kk)<len(latlist) and (j+ll)>=0 and (j+ll)<len(lonlist):
+                                denSums[i+kk,j+ll]+=1
+    return denCounts,denSums

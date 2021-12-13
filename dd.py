@@ -9,64 +9,247 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from seisloc.geometry import in_rectangle,loc_by_width
+from math import ceil,floor
+import shutil
+import random
+import multiprocessing as mp
+import time
+import subprocess
+import copy
+
+def load_PC(catalog="/home/zijinping/Desktop/projects/wy_eq/2018_2019_PC/2018_2019_hypoDD.reloc",
+            start_evid=300000):
+    """
+    Read in Pengcheng's earthquake catalog
+    """
+    evid = start_evid+1
+    catalog_dict = {}
+    cont = []
+    with open(catalog,'r') as f:
+        cont = f.readlines()
+    for line in cont:
+        _time,_,_lat,_lon,_dep,_mag, = re.split(" +",line.rstrip())[:6]
+        etime = UTCDateTime.strptime(_time,'%Y%m%d%H%M%S')
+        catalog_dict[evid] = [float(_lon),float(_lat),float(_dep),float(_mag),etime]
+        evid += 1
+    return catalog_dict
+
+def load_CEDC(catalog="/home/zijinping/Dropbox/resources/catalog/CEDC/20090101_20201231.txt",start_evid=100000):
+    """
+    Read in China Earthquake Data Center catalog
+    """
+    evid = start_evid+1
+    catalog_dict = {}
+    cont = []
+    with open(catalog,'r') as f:
+        cont = f.readlines()
+    for line in cont:
+        _time,_lon,_lat,_dep,M,_mag,_,_ = re.split(",",line.rstrip())
+        #print(_time,_lon,_lat,_dep,_mag)
+        _date,_hr_min = re.split(" ",_time)
+        _yr,_mo,_dy = re.split("\/",_date)
+        _hr,_min = re.split(":",_hr_min)
+        yr = int(_yr); mo = int(_mo); dy = int(_dy)
+        hr = int(_hr); minute = int(_min)
+        etime = UTCDateTime(yr,mo,dy,hr,minute,0)
+        catalog_dict[evid] = [float(_lon),float(_lat),float(_dep),float(_mag),etime]
+        evid += 1
+    return catalog_dict
 
 class DD():
     def __init__(self,reloc_file="hypoDD.reloc"):
-        self.dict,_ = load_DD(reloc_file)
-        self.get_locs()
-        
-    def get_locs(self):
+        try:
+            self.dict,_ = load_DD(reloc_file)
+            self.init()
+        except:
+            print("No hypoDD data read in, an empty catalog generated")
+            print("You can define self.dict[key] = [lon,lat,dep,mag,UTCDateTime]}")
+            print("Then run: .init() function")
+    def init(self):
+        self.init_keys()
+        self.init_locs()
+        self.init_relative_times()
+
+    def init_keys(self):
+        """
+        Turn dict keys into numpy array
+        """
+        self.keys = list(self.dict.keys())
+        self.keys = np.array(self.keys)
+        self.keys = self.keys.astype(int)
+
+    def init_locs(self):
+        """
+        Generate numpy array in format lon, lat, dep, mag
+        """
         self.locs = []
-        for key in self.dict.keys():
+        for key in self.keys:
             lon = self.dict[key][0]
             lat = self.dict[key][1]
             dep = self.dict[key][2]
             mag = self.dict[key][3]
             self.locs.append([lon,lat,dep,mag])
         self.locs = np.array(self.locs)
+
+    def init_relative_times(self):
+        """
+        Numpy array to save relative seconds to the first event
+        """
+        self.first_key = self.keys[0]
+        self.first_time = self.dict[self.first_key][4]
+        self.relative_times = []
+        for key in self.keys:
+            etime = self.dict[key][4]
+            self.relative_times.append(etime-self.first_time)
+        self.relative_times = np.array(self.relative_times)
+
+    def update_keys(self,idxs):
+        """
+        Update keys array with indexs
+        """
+        self.keys = self.keys[idxs]
+
+    def update_dict(self):
+        """
+        Update dictionary with keys
+        """
+        old_keys = list(self.dict.keys())
+        for key in old_keys:
+            if key not in self.keys:
+                self.dict.pop(key)
+
+    def update_locs(self,idxs):
+        """
+        Update location array with indexs
+        """
+        self.locs = self.locs[idxs]
+
+    def update_relative_times(self,idxs):
+        """
+        Update relative times with indexs
+        """
+        self.relative_times = self.relative_times[idxs]
         
+    def crop(self,lonmin,lonmax,latmin,latmax):
+        """
+        Trim the dataset with the boundary conditions
+        """
+        idxs = np.where((self.locs[:,0]>=lonmin)&(self.locs[:,0]<=lonmax)&\
+                        (self.locs[:,1]>=latmin)&(self.locs[:,1]<=latmax))
+        self.update_keys(idxs)
+        self.update_dict()
+        self.update_locs(idxs)
+        self.update_relative_times(idxs)
+
+    def trim(self,starttime,endtime):
+        """
+        Trim the dataset with time conditions
+        """
+        min_reftime = starttime - self.first_time
+        max_reftime = endtime - self.first_time
+        
+        idxs = np.where((self.relative_times>=min_reftime)&\
+                        (self.relative_times<=max_reftime))
+        self.update_keys(idxs)
+        self.update_dict()
+        self.update_locs(idxs)
+        self.update_relative_times(idxs)
+
+    def sort(self,method="time"):
+        idxs = self.relative_times.argsort()
+        self.update_keys(idxs)
+        self.update_dict()
+        self.update_locs(idxs)
+        self.update_relative_times(idxs)
+
     def hplot(self,
               xlim=[],
               ylim=[],
+              edgecolor='grey',
               markersize=6,
               size_ratio=1,
-              imp_mag=3,
-              add_cross=False,
+              imp_mag=None,
+              cmap = None,
+              ref_time = UTCDateTime(2019,3,1),
+              vmin=0,
+              vmax=1,
+              unit="day",
+              add_section=False,
               alonlat=[104,29],
               blonlat=[105,30],
-              cross_width=0.05):
+              section_width=0.05,
+              plt_show=True,
+              crop=False):
+        """
+        Map view plot of earthquakes
+        """
+        if section_width <=0:
+            raise Error("Width <= 0")
         # plot all events
-        plt.scatter(self.locs[:,0],
+        if add_section==True:
+            alon = alonlat[0]; alat = alonlat[1]
+            blon = blonlat[0]; blat = blonlat[1]
+            print(alon,alat,blon,blat,section_width)
+            results = in_rectangle(self.locs,alon,alat,blon,blat,section_width/2)
+            jj = np.where(results[:,0]==1)
+            if crop == True:
+                self.update_keys(jj)
+                self.update_relative_times(jj)
+                self.update_locs(jj)
+                self.update_dict()
+                
+        if cmap == None:
+            plt.scatter(self.locs[:,0],
                     self.locs[:,1],
                     (self.locs[:,3]+2)*size_ratio,
-                    edgecolors = "k",
+                    edgecolors = edgecolor,
                     facecolors='none',
                     marker='o',
                     alpha=1)
+        else:
+            shift_seconds = ref_time - self.first_time
+            times_plot = self.relative_times-shift_seconds
+            if unit=="day":
+                times_plot = times_plot/(24*60*60)
+            elif unit=="hour":
+                times_plot = times_plot/(60*60)
+            elif unit=="minute":
+                times_plot = times_plot/60
+            plt.scatter(self.locs[:,0],
+                    self.locs[:,1],
+                    c=times_plot,
+                    s=(self.locs[:,3]+2)*size_ratio,
+                    cmap = cmap,
+                    vmin = vmin,
+                    vmax = vmax,
+                    marker='o',
+                    alpha=1)
+
         # plot large events
-        kk = np.where(self.locs[:,3]>=imp_mag)
-        if len(kk)>0:                 
-            imp = plt.scatter(self.locs[kk,0],
+        if imp_mag != None:
+            kk = np.where(self.locs[:,3]>=imp_mag)
+            if len(kk)>0:                 
+                imp = plt.scatter(self.locs[kk,0],
                         self.locs[kk,1],
-                        (self.locs[kk,3]+2)*size_ratio*10,
-                        edgecolors ='red',
+                        (self.locs[kk,3]+2)*size_ratio*20,
+                        edgecolors ='black',
                         facecolors='red',
                         marker='*',
                         alpha=1)
-            plt.legend([imp],[f"M$\geq${format(imp_mag,'4.1f')}"])
+                plt.legend([imp],[f"M$\geq${format(imp_mag,'4.1f')}"])
         
-        if add_cross == True: # draw cross-section plot
+        if add_section == True: # draw cross-section plot
             a1lon,a1lat,b1lon,b1lat = loc_by_width(alonlat[0],
                                                    alonlat[1],
                                                    blonlat[0],
                                                    blonlat[1],
-                                                   width=cross_width,
+                                                   width=section_width/2,
                                                    direction="right")
             a2lon,a2lat,b2lon,b2lat = loc_by_width(alonlat[0],
                                                    alonlat[1],
                                                    blonlat[0],
                                                    blonlat[1],
-                                                   width=cross_width,
+                                                   width=section_width/2,
                                                    direction="left")
             plt.plot([a1lon,b1lon,b2lon,a2lon,a1lon],
                      [a1lat,b1lat,b2lat,a2lat,a1lat],
@@ -80,9 +263,25 @@ class DD():
             plt.ylim(ylim)
         plt.xlabel("Longitude")
         plt.ylabel("Latitude")
-        plt.show()
+        plt.gca().set_aspect("equal")
+        if plt_show == True:
+            plt.show()
         
-    def vplot(self,alonlat=[],blonlat=[],width=0.1,depmin=0,depmax=10,size_ratio=1,imp_mag=3):
+    def vplot(self,
+              alonlat=[],
+              blonlat=[],
+              edgecolor='grey',
+              width=0.1,
+              depmin=0,
+              depmax=10,
+              size_ratio=1,
+              imp_mag=None,
+              cmap=None,
+              ref_time = UTCDateTime(2019,3,1),
+              vmin=0,
+              vmax=1,
+              unit="day",
+              aspect="auto"):
         """
         Description
         """
@@ -90,42 +289,218 @@ class DD():
         length_km = length_m/1000
         alon = alonlat[0]; alat = alonlat[1]
         blon = blonlat[0]; blat = blonlat[1]
-        results = in_rectangle(self.locs,alon,alat,blon,blat,width)
+        results = in_rectangle(self.locs,alon,alat,blon,blat,width/2)
         jj = np.where(results[:,0]>0)
-        plt.scatter(results[jj,1],
+        if cmap==None:
+            plt.scatter(results[jj,1],
                     self.locs[jj,2],
                     marker='o',
-                    edgecolors = "k",
+                    edgecolors = edgecolor,
                     facecolors='none',
                     s=(self.locs[jj,3]+2)*size_ratio*5)
+        else:
+            shift_seconds = ref_time - self.first_time
+            times_plot = self.relative_times[jj]-shift_seconds
+            if unit=="day":
+                times_plot = times_plot/(24*60*60)
+            elif unit=="hour":
+                times_plot = times_plot/(60*60)
+            elif unit=="minute":
+                times_plot = times_plot/60
+            im = plt.scatter(results[jj,1],
+                    self.locs[jj,2],
+                    c=times_plot,
+                    s=(self.locs[jj,3]+2)*size_ratio*5,
+                    cmap = cmap,
+                    vmin = vmin,
+                    vmax = vmax,
+                    marker='o',
+                    alpha=1)
+            cb = plt.colorbar(im)
+            cb.set_label(unit)
+
         tmplocs = self.locs[jj]
         tmpresults = results[jj]
-        kk = np.where(tmplocs[:,3]>=imp_mag)
-
-        if len(kk)>0:                 
-            imp = plt.scatter(tmpresults[kk,1],
+        if imp_mag != None:
+            kk = np.where(tmplocs[:,3]>=imp_mag)
+            if len(kk)>0:                 
+                imp = plt.scatter(tmpresults[kk,1],
                         tmplocs[kk,2],
-                        (tmplocs[kk,3]+2)*size_ratio*10,
-                        edgecolors ='red',
+                        (tmplocs[kk,3]+2)*size_ratio*30,
+                        edgecolors ='black',
                         facecolors='red',
                         marker='*',
                         alpha=1)
-            plt.legend([imp],[f"M$\geq${format(imp_mag,'4.1f')}"])
+                plt.legend([imp],[f"M$\geq${format(imp_mag,'4.1f')}"])
         
         plt.ylim([depmax,depmin])
         plt.xlim([0,length_km])
-        plt.xlabel("length (km)")
+        plt.xlabel("distance (km)")
         plt.ylabel("depth (km)")
+        plt.gca().set_aspect(aspect)
+        plt.show()
     
-        #fig,axs = plt.subplots(2,1,1)
+    def MT_plot(self,ref_time=UTCDateTime(2019,3,1),xlim=[],ylim=[0,5],unit="day",cmap=None,vmin=0,vmax=1):
+        """
+        unit: 'day','hour' or 'second'
+        """
+        if unit == "day":
+            denominator = (24*60*60)
+            plt.xlabel("Time (day)")
+        elif unit == "hour":
+            denominator = (60*60)
+            plt.xlabel("Time (hour)")
+        elif unit == "second":
+            denominator = 1
+            plt.xlabel("Time (second)")
+        
+        for key in self.keys:
+            etime = self.dict[key][4]
+            emag = self.dict[key][3]
+            diff_seconds = etime - ref_time
+            diff_x = diff_seconds/denominator
+            if cmap == None:
+                plt.plot([diff_x,diff_x],[0,emag],c='grey')
+            else:
+                plt.plot([diff_x,diff_x],[0,emag],color=cmap((diff_x-vmin)/(vmax-vmin)))
+            plt.plot([diff_x],emag,'x',c='k')
+        plt.ylim(ylim)
+        if len(xlim)>0:
+            plt.xlim(xlim)
+        plt.ylabel("Magnitude")
+        plt.show()
+
+    def dep_dist_plot(self,refid,
+                  ref_time=UTCDateTime(2019,3,1),
+                  xlim=[],
+                  deplim=[],
+                  distlim=[],
+                  unit="day",
+                  cmap=None,
+                  vmin=0,
+                  vmax=1,
+                  figsize=(8,6)):
+        fig,axs = plt.subplots(2,1,figsize=figsize)
+        if unit == "day":
+            denominator = (24*60*60)
+            plt.xlabel("Time (day)")
+        elif unit == "hour":
+            denominator = (60*60)
+            plt.xlabel("Time (hour)")
+        elif unit == "second":
+            denominator = 1
+            plt.xlabel("Time (second)")
+        if len(xlim)>0:
+            axs[0].set_xlim(xlim)
+            axs[1].set_xlim(xlim)
+        axs[0].set_ylabel("Depth (km)")
+        axs[1].set_ylabel("3D-dist (km)")
+        if len(deplim)>0:
+            axs[0].set_ylim(deplim)
+        if len(distlim)>0:
+            axs[1].set_ylim(distlim)
+        axs[0].grid(axis="y")
+        axs[1].grid(axis="y")
+        reflon = self.dict[refid][0]
+        reflat = self.dict[refid][1]
+        refdep = self.dict[refid][2]
+        for evid in self.keys:
+            etime =self.dict[evid][4]
+            elon = self.dict[evid][0]
+            elat = self.dict[evid][1]
+            edep = self.dict[evid][2]
+            emag = self.dict[evid][3]
+            diff_x = (etime-ref_time)/denominator
+            dist,_,_ = gps2dist_azimuth(elat,elon,reflat,reflon)
+            d3dist = np.sqrt((dist/1000)**2+(edep-refdep)**2)
+            if cmap==None:
+                axs[0].scatter(diff_x,edep,s=(emag+2)*5,marker='o',c='k')
+                axs[1].scatter(diff_x,d3dist,s=(emag+2)*5,marker='o',c='k')
+            else:
+                axs[0].scatter(diff_x,edep,s=(emag+2)*5,marker='o',color=cmap((diff_x-vmin)/(vmax-vmin)))
+                axs[1].scatter(diff_x,d3dist,s=(emag+2)*5,marker='o',color=cmap((diff_x-vmin)/(vmax-vmin)))
+
+        plt.tight_layout()
+        plt.show()
+        
+    def depth_hist(self,mag_threshold=-9,depthmin=0,depthmax=10,gap=0.5):
+        bins=np.arange(depthmin,depthmax,gap)
+        fig,ax = plt.subplots(1,1,figsize=(6,8))
+        ax.xaxis.tick_top()
+        ax.xaxis.set_label_position("top")
+        ax.set_ylabel("Depth (km)",fontsize=16)
+        ax.set_xlabel("Event Qty",fontsize=16)
+        kk = np.where(self.locs[:,3]>=mag_threshold)
+        hist,bins = np.histogram(self.locs[:,2],bins=bins)
+        ax.barh(bins[:-1]+gap/2,hist,height=gap,color='gray',edgecolor='k')
+        ax.set_ylim([depthmax,depthmin])
+        plt.show()
+        
+    def day_hist(self,ref_time=UTCDateTime(2019,1,1,0,0,0),plot_months=True):
+        """
+        Plot events by day-quantity in a histogram plot.
+        Parameters:
+            -dd_file: Path of hypoDD file
+            -ref_time: Reference time for plot
+        """
+        ref_list = []
+        time_list = []
+        for key in self.dict.keys():
+            _,_,_,_,etime = self.dict[key]
+            ref_list.append((etime-ref_time)/(24*60*60))
+
+        min_day=floor(min(ref_list))
+        max_day=ceil(max(ref_list))
+        bins = np.linspace(min_day,max_day,max_day-min_day+1)
+        fig1 = plt.figure(1,figsize=(8,4))
+        ax1 = plt.subplot(1,1,1)
+        ax1.hist(ref_list,bins)
+        # The bottom x-axis is in days
+        ax1.set_xlim([0,max_day])
+        # The top x-axis marks year and month in YYYYMM
+        tick_list_1 = [] # Store the position number
+        tick_list_2 = [] # Store the tick text
+        ref_year = ref_time.year
+        ref_month = ref_time.month
+        ref_day = ref_time.day
+        if ref_day == 1:
+            tick_list_1.append(0)
+            tick_list_2.append(str(ref_year)+str(ref_month).zfill(2))
+        status = True # Start to loop month by month
+        loop_time = UTCDateTime(ref_year,ref_month,1) # Initiate loop time
+        step = 32 #32 > 31. Make sure each step pass to next month
+        while status==True:
+            loop_time = loop_time + step*24*60*60
+            tmp_year = loop_time.year
+            tmp_month = loop_time.month
+            loop_time = UTCDateTime(tmp_year,tmp_month,1)
+            diff_days = (loop_time - ref_time)/(24*60*60)
+            if diff_days > (max_day):
+                status=False
+            else:
+                tick_list_1.append(diff_days)
+                tick_list_2.append((str(tmp_month).zfill(2)))
+        if plot_months:
+            ax2 = ax1.twiny()
+            ax2.set_xlim([0,max_day])
+            ax2.plot(0,0,'k.')
+            plt.xticks(tick_list_1,tick_list_2)
+            ax2.set_xlabel("date")
+        ax1.set_xlabel("Time, days")
+        ax1.set_ylabel("event quantity")
+        plt.show()
+
+    def copy(self):
+        return copy.deepcopy(self)
+    
     def __repr__(self):
-        self.get_locs()
-        _qty = f"HypoDD relocation catlog with {len(self.dict.keys())} events\n"
-        _mag = f"Magnitue range is: {format(np.min(self.locs[:,3]),'4.1f')} to {format(np.max(self.locs[:,3]),'4.1f')}\n"
+        _qty = f"HypoDD relocation catalog with {len(self.dict.keys())} events\n"
+        _time= f"     Time range is: {self.first_time+np.min(self.relative_times)} to {self.first_time+np.max(self.relative_times)}\n"
+        _mag = f" Magnitue range is: {format(np.min(self.locs[:,3]),'4.1f')} to {format(np.max(self.locs[:,3]),'4.1f')}\n"
         _lon = f"Longitude range is: {format(np.min(self.locs[:,0]),'8.3f')} to {format(np.max(self.locs[:,0]),'8.3f')}\n"
-        _lat = f"Latitude range is: {format(np.min(self.locs[:,1]),'7.3f')} to {format(np.max(self.locs[:,1]),'7.3f')}\n"
-        _dep = f"Depth range is: {format(np.min(self.locs[:,2]),'4.1f')} to {format(np.max(self.locs[:,2]),'4.1f')}\n"
-        return _qty+_mag+_lon+_lat+_dep
+        _lat = f" Latitude range is: {format(np.min(self.locs[:,1]),'7.3f')} to {format(np.max(self.locs[:,1]),'7.3f')}\n"
+        _dep = f"    Depth range is: {format(np.min(self.locs[:,2]),'4.1f')} to {format(np.max(self.locs[:,2]),'4.1f')}\n"
+        return _qty+_time+_mag+_lon+_lat+_dep
     
     def __getitem__(self,key):
         return self.dict[key]
@@ -378,107 +753,6 @@ def hypoDD_ref_days(reloc_file,ref_time,shift_hours=0):
             f.write(line+"\n")
     f.close()
 
-def hypoDD_hist(dd_file="hypoDD.reloc",ref_time=UTCDateTime(2019,3,1,0,0,0)):
-    """
-    Plot events by day-quantity in a histogram plot.
-    Parameters:
-        -dd_file: Path of hypoDD file
-        -ref_time: Reference time for plot
-    """
-    ref_list = []
-    time_list = []
-    number=0
-    if isinstance(dd_file,str):
-        with open(dd_file,"r") as f:
-            for line in f:
-                number = number+1
-                if number%10==0:
-                    print("Current in process %d    "%number,end='\r')
-                data=re.split(" +",line.rstrip())[1:]
-                try:
-                    data_arr = np.vstack((data_arr,data))
-                except:
-                    data_arr = np.array(data)
-                eve_id = data[0]
-                eve_lat = data[1]
-                eve_lon = data[2]
-                eve_dep = data[3]
-                year = int(data[10])
-                month = int(data[11])
-                day = int(data[12])
-                hour = int(data[13])
-                minute = int(data[14])
-                seconds = float(data[15])
-                eve_time = UTCDateTime(year,month,day,hour,minute)+seconds
-                time_list.append(eve_time)
-                gap_time = eve_time - ref_time
-                ref_list.append((eve_time-ref_time)/(60*60*24))
-    elif isinstance(dd_file,list)and len(dd_file)!=0:
-        for dd_f in dd_file:
-            with open(dd_f,"r") as f:
-                for line in f:
-                    number = number+1
-                    if number%10==0:
-                        print("Current in process %d    "%number,end='\r')
-                    data=re.split(" +",line.rstrip())[1:]
-                    try:
-                        data_arr = np.vstack((data_arr,data))
-                    except:
-                        data_arr = np.array(data)
-                    eve_id = data[0]
-                    eve_lat = data[1]
-                    eve_lon = data[2]
-                    eve_dep = data[3]
-                    year = int(data[10])
-                    month = int(data[11])
-                    day = int(data[12])
-                    hour = int(data[13])
-                    minute = int(data[14])
-                    seconds = float(data[15])
-                    eve_time = UTCDateTime(year,month,day,hour,minute)+seconds
-                    time_list.append(eve_time)
-                    gap_time = eve_time - ref_time
-                    ref_list.append((eve_time-ref_time)/(60*60*24))
-    min_day=floor(min(ref_list))
-    max_day=ceil(max(ref_list))
-    bins = np.linspace(min_day,max_day,max_day-min_day+1)
-    fig1 = plt.figure(1,figsize=(8,4))
-    ax1 = plt.subplot(1,1,1)
-    ax1.hist(ref_list,bins)
-    # The bottom x-axis is in days
-    ax1.set_xlim([0,max_day])
-    # The top x-axis marks year and month in YYYYMM
-    tick_list_1 = [] # Store the position number
-    tick_list_2 = [] # Store the tick text
-    ref_year = ref_time.year
-    ref_month = ref_time.month
-    ref_day = ref_time.day
-    if ref_day == 1:
-        tick_list_1.append(0)
-        tick_list_2.append(str(ref_year)+str(ref_month).zfill(2))
-    status = True # Start to loop month by month
-    loop_time = UTCDateTime(ref_year,ref_month,1) # Initiate loop time
-    step = 32 #32 > 31. Make sure each step pass to next month
-    while status==True:
-        loop_time = loop_time + step*24*60*60
-        tmp_year = loop_time.year
-        tmp_month = loop_time.month
-        loop_time = UTCDateTime(tmp_year,tmp_month,1)
-        diff_days = (loop_time - ref_time)/(24*60*60)
-        if diff_days > (max_day):
-            status=False
-        else:
-            tick_list_1.append(diff_days)
-            tick_list_2.append((str(tmp_month).zfill(2)))
-    ax2 = ax1.twiny()
-    ax2.set_xlim([0,max_day])
-    ax2.plot(0,0,'k.')
-    plt.xticks(tick_list_1,tick_list_2)
-    ax1.set_xlabel("Time, days")
-    ax1.set_ylabel("event quantity")
-    ax2.set_xlabel("date")
-    plt.show()
-
 def compare_DD(dd1_path,dd2_path):
     dd1,_ = load_DD(dd1_path)
     dd2,_ = load_DD(dd2_path)
@@ -577,41 +851,75 @@ def run_dd(base_dir="./",work_dir='hypoDD',inp_file="hypoDD.inp"):
     subprocess.run(["hypoDD",inp_file])
     os.chdir(base_dir)
 
-def dd_bootstrap(base_folder="hypoDD",times=10,samp_ratio=0.75,cores=2):
+def dd_bootstrap(base_folder="hypoDD",times=10,method="event",samp_ratio=0.75,cores=2):
     """
     Randomly run hypoDD with randomly selected events to show the results variation
     Parameters:
         base_folder: the basement folder which should include the material for hypoDD, 
             including dt.ct, dt.cc,hypoDD.inp, event.dat, station.dd
         times: number of hypoDD runs
+        method: "event" means sample events; "phase" means sample phases
         samp_ratio: the ratio of events to be relocated in the run
     """
     # Load in event.dat file
     base_dir = os.getcwd()
     e_dat = []
-    rand_dict = {}
-    with open(os.path.join(base_folder,"event.dat"),'r') as f:
-        for line in f:
-            evid = int(line[84:91])
-            rand_dict[evid] = []
-            e_dat.append(line)
-    e_qty = len(e_dat)
-    s_qty = int(e_qty*samp_ratio) # sample qty
-   
-    tar_folders = []
-    tasks = []
-    # Prepare the subroutine files
-    for i in range(1,times+1):
-        tar_folder = base_folder + str(i).zfill(3)
-        shutil.copytree(base_folder,tar_folder)
-        sel_idxs = random.sample(range(e_qty),s_qty)
-        with open(os.path.join(tar_folder,'event.sel'),'w') as f:
-            for idx in sel_idxs:
-                f.write(e_dat[idx])
-        f.close()
-        tar_folders.append(tar_folder)
-        tasks.append([base_dir,tar_folder])
-    
+    if method == "event":
+        with open(os.path.join(base_folder,"event.dat"),'r') as f:
+            for line in f:
+                evid = int(line[84:91])
+                e_dat.append(line)
+        e_qty = len(e_dat)
+        s_qty = int(e_qty*samp_ratio) # sample qty
+
+        tar_folders = []
+        tasks = []
+        # Prepare the subroutine files
+        for i in range(1,times+1):
+            tar_folder = base_folder + str(i).zfill(3)
+            shutil.copytree(base_folder,tar_folder)
+            sel_idxs = random.sample(range(e_qty),s_qty)
+            with open(os.path.join(tar_folder,'event.sel'),'w') as f:
+                for idx in sel_idxs:
+                    f.write(e_dat[idx])
+            f.close()
+            tar_folders.append(tar_folder)
+            tasks.append([base_dir,tar_folder])
+            
+    if method == "phase":
+        dtct = []
+        out_dtct = []
+        with open(os.path.join(base_folder,"dt.ct"),'r') as f:
+            for line in f:
+                dtct.append(line)        
+        len_dtct = len(dtct)
+        
+        tar_folders = []
+        tasks = []
+        # Prepare the subroutine files
+        for i in range(1,times+1):
+            tar_folder = base_folder + str(i).zfill(3)
+            shutil.copytree(base_folder,tar_folder)
+            with open(os.path.join(tar_folder,'dt.ct'),'w') as f:
+                
+                for i,line in enumerate(dtct):
+                    if line[0] == "#":    # event line
+                        f.write(dtct[i])
+                        tmp = []
+                        j = i+1
+                        while j<len_dtct and dtct[j][0]!="#":
+                            tmp.append(dtct[j])
+                            j=j+1
+                        pha_qty = len(tmp)
+                        sample_qty = int(pha_qty*samp_ratio+0.5)
+                        sel_idxs = random.sample(range(pha_qty),sample_qty)
+                        for idx in sel_idxs:
+                            f.write(tmp[idx])
+
+
+            tar_folders.append(tar_folder)
+            tasks.append([base_dir,tar_folder])
+            
     pool = mp.Pool(processes=cores)
     rs = pool.starmap_async(run_dd,tasks,chunksize=1)
     while True:
@@ -620,6 +928,24 @@ def dd_bootstrap(base_folder="hypoDD",times=10,samp_ratio=0.75,cores=2):
         if(rs.ready()):
             break
         time.sleep(0.5)
+    print("\nDone!!!")
+    
+def bootstrap_summary(times,base_folder="hypoDD"):
+    """
+    """
+    rand_dict = {}
+    
+    with open(os.path.join(base_folder,"event.dat"),'r') as f:
+        for line in f:
+            evid = int(line[84:91])
+            rand_dict[evid] = []
+
+    
+    tar_folders = []
+    for i in range(1,times+1):
+        tar_folder = base_folder + str(i).zfill(3)
+        tar_folders.append(tar_folder)
+
     # Load hypoDD results
     print("Loading results ...")
     for tar_folder in tar_folders:
@@ -648,18 +974,16 @@ def dd_bootstrap(base_folder="hypoDD",times=10,samp_ratio=0.75,cores=2):
             mean_dep = np.mean(dep_list)
             std_lon = np.std(lon_list)
             std_lat = np.std(lat_list)
+            std_herr = np.sqrt(std_lon**2+std_lat**2)
             std_dep = np.std(dep_list)
             f.write(format(key,'7d')+" "+
                 format(mean_lon,'8.4f')+" "+
                 format(mean_lat,'7.4f')+" "+
                 format(mean_dep*1000,'9.3f')+" "+
-                format(std_lon*111.1*1000,"9.3f")+" "+
-                format(std_lat*111.1*1000,"9.3f")+" "+
-                format(std_dep*1000,"8.3f")+" "+
+                format(std_herr*111.1*1000*2,"9.3f")+" "+
+                format(std_dep*1000*2,"8.3f")+" "+
                 format(record_qty,'3d')+"\n")
-
     f.close()
-    print("Done")
 
 def pha_subset(pha_file,loc_filter,obs_filter=8,out_file=None):
     """
@@ -749,3 +1073,24 @@ def pha_sel(pha_file,e_list=[],remove_net=False):
         for line in out:
             f.write(line+'\n')
     f.close()
+
+def inv_dd_compare(inv,dd,keys=[],xlim=[],ylim=[],aspect='auto'):
+    inv_locs = []
+    dd_locs = []
+    for key in keys:
+        key = int(key)
+        inv_lon = inv[key][1]
+        inv_lat = inv[key][2]
+        dd_lon = dd[key][0]
+        dd_lat = dd[key][1]
+        inv_locs.append([inv_lon,inv_lat])
+        dd_locs.append([dd_lon,dd_lat])
+    inv_locs = np.array(inv_locs)
+    dd_locs = np.array(dd_locs)
+    plt.plot(inv_locs[:,0],inv_locs[:,1],'kx')
+    plt.plot(dd_locs[:,0],dd_locs[:,1],'rv')
+    if len(xlim)>0:
+        plt.xlim(xlim)
+    if len(ylim)>0:
+        plt.ylim(ylim)
+    plt.gca().set_aspect(aspect)

@@ -1,4 +1,29 @@
 import warnings
+from seisloc.hypoinv import load_y2000
+
+def gen_abs_file(arcfile,outfile="Input_Files/absolute.dat",pweight=1,sweight=0.5):
+    pweight = 1
+    sweight = 0.5
+    arcphs = load_y2000(arcfile)
+    with open("Input_Files/absolute.dat",'w') as f:
+        for key in arcphs.keys():
+            evid = arcphs[key]["evid"]
+            f.write(f"#             {format(str(evid),'>5s')}\n")
+            phases = arcphs[key]["phase"]
+            for phase in phases:
+                net,sta,phs,abstime = phase
+                f.write(f"{format(sta,'<5s')}")
+                f.write("      ")
+                f.write(f"{format(abstime,'>5.2f')}")
+                f.write("       ")
+                if phs == "P":
+                    f.write(format(pweight,'3.1f'))
+                elif phs == "S":
+                    f.write(format(sweight,'3.1f'))
+                f.write("   ")
+                f.write(phs)
+                f.write("\n")
+
 
 def prepMOD(head,lon_list,lat_list,dep_list,vel_list,poisson_list):
     """

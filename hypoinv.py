@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import time
 import pickle
+from seisloc.geometry import in_rectangle,loc_by_width
 
 
 def invmod2vel(out_file,vp_file,vs_file="",ps_ratio=1.73,vpdamp=1,vsdamp=1):
@@ -279,7 +280,6 @@ def phs_subset(phs_file,evid_list=[],loc_filter=[]):
             if line[26]=="W":
                 lon = -lon
         if line[:4]== "    ": # last line of one event
-            print(lon,lat)
             record_status = True
             evid = int(line[66:72])
             if evid_filt == True:
@@ -381,16 +381,42 @@ class Hypoinv():
     def __init__(self,sum_file="out.sum"):
         self.dict_evid = load_sum_evid(sum_file)
         self.dict_evstr = load_sum_evstr(sum_file)
+        self.get_locs()
+
+    def get_locs(self):
         self.locs = []
+        tmp = 0
         for key in self.dict_evid.keys():
             lon = self.dict_evid[key][1]
             lat = self.dict_evid[key][2]
             dep = self.dict_evid[key][3]
             mag = self.dict_evid[key][4]
+            res = self.dict_evid[key][5]
+            tmp = tmp+res
             self.locs.append([lon,lat,dep,mag])
         self.locs = np.array(self.locs)
+        self.avg_res = tmp/self.locs.shape[0]
         
-    def plot(self,xlim=[],ylim=[],markersize=6,size_ratio=1,imp_mag=3):
+    def crop(self,lonmin,lonmax,latmin,latmax):
+        pop_list = []
+        for key in self.dict.keys():
+            lon,lat,_,_,_ = self.dict[key]
+            if lon<lonmin or lon>lonmax or lat<latmin or lat>latmax:
+                pop_list.append(key)
+                
+        for key in pop_list:
+            self.dict.pop(key)
+    
+    def hplot(self,
+              xlim=[],
+              ylim=[],
+              markersize=6,
+              size_ratio=1,
+              imp_mag=3,
+              add_cross=False,
+              alonlat=[104,29],
+              blonlat=[105,30],
+              cross_width=0.1):
 
         plt.scatter(self.locs[:,0],
                     self.locs[:,1],
@@ -410,6 +436,24 @@ class Hypoinv():
                         marker='*',
                         alpha=1)
             plt.legend([imp],[f"M$\geq${format(imp_mag,'4.1f')}"])
+        if add_cross == True: # draw cross-section plot
+            a1lon,a1lat,b1lon,b1lat = loc_by_width(alonlat[0],
+                                                   alonlat[1],
+                                                   blonlat[0],
+                                                   blonlat[1],
+                                                   width=cross_width,
+                                                   direction="right")
+            a2lon,a2lat,b2lon,b2lat = loc_by_width(alonlat[0],
+                                                   alonlat[1],
+                                                   blonlat[0],
+                                                   blonlat[1],
+                                                   width=cross_width,
+                                                   direction="left")
+            plt.plot([a1lon,b1lon,b2lon,a2lon,a1lon],
+                     [a1lat,b1lat,b2lat,a2lat,a1lat],
+                     linestyle='--',
+                     c='darkred')
+            plt.plot([alonlat[0],blonlat[0]],[alonlat[1],blonlat[1]],c='darkred')
         if len(xlim) != 0:
             plt.xlim(xlim)
         if len(ylim) != 0: 
@@ -418,8 +462,58 @@ class Hypoinv():
         plt.ylabel("Latitude")
         plt.show()
     
+    def vplot(self,alonlat=[],blonlat=[],width=0.1,depmin=0,depmax=10,size_ratio=1,imp_mag=3):
+        """
+        Description
+        """
+        length_m,_,_ = gps2dist_azimuth(alonlat[1],alonlat[0],blonlat[1],blonlat[0])
+        length_km = length_m/1000
+        alon = alonlat[0]; alat = alonlat[1]
+        blon = blonlat[0]; blat = blonlat[1]
+        results = in_rectangle(self.locs,alon,alat,blon,blat,width)
+        jj = np.where(results[:,0]>0)
+        plt.scatter(results[jj,1],
+                    self.locs[jj,2],
+                    marker='o',
+                    edgecolors = "k",
+                    facecolors='none',
+                    s=(self.locs[jj,3]+2)*size_ratio*5)
+        tmplocs = self.locs[jj]
+        tmpresults = results[jj]
+        kk = np.where(tmplocs[:,3]>=imp_mag)
+
+        if len(kk)>0:                 
+            imp = plt.scatter(tmpresults[kk,1],
+                        tmplocs[kk,2],
+                        (tmplocs[kk,3]+2)*size_ratio*10,
+                        edgecolors ='red',
+                        facecolors='red',
+                        marker='*',
+                        alpha=1)
+            plt.legend([imp],[f"M$\geq${format(imp_mag,'4.1f')}"])
+        
+        plt.ylim([depmax,depmin])
+        plt.xlim([0,length_km])
+        plt.xlabel("length (km)")
+        plt.ylabel("depth (km)")
+        plt.show()
+
+    def depth_hist(self,mag_threshold=-9,depthmin=0,depthmax=10,gap=0.5):
+        bins=np.arange(depthmin,depthmax,gap)
+        fig,ax = plt.subplots(1,1,figsize=(6,8))
+        ax.xaxis.tick_top()
+        ax.xaxis.set_label_position("top")
+        ax.set_ylabel("Depth (km)",fontsize=16)
+        ax.set_xlabel("Event Qty",fontsize=16)
+        kk = np.where(self.locs[:,3]>=mag_threshold)
+        hist,bins = np.histogram(self.locs[:,2],bins=bins)
+        ax.barh(bins[:-1]+gap/2,hist,height=gap,color='gray',edgecolor='k')
+        ax.set_ylim([depthmax,depthmin])
+        plt.show()
+        
     def __repr__(self):
-        _qty = f"Hypoinverse catlog with {len(self.dict_evid.keys())} events\n"
+        self.get_locs()
+        _qty = f"Hypoinverse catlog with {len(self.locs)} events\n"
         _mag = f"Magnitue range is: {format(np.min(self.locs[:,3]),'4.1f')} to {format(np.max(self.locs[:,3]),'4.1f')}\n"
         _lon = f"Longitude range is: {format(np.min(self.locs[:,0]),'8.3f')} to {format(np.max(self.locs[:,0]),'8.3f')}\n"
         _lat = f"Latitude range is: {format(np.min(self.locs[:,1]),'7.3f')} to {format(np.max(self.locs[:,1]),'7.3f')}\n"
