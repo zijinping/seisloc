@@ -37,7 +37,7 @@ def loadEQTphases(df):
                 sdict[sdayStr].append([ssecs,sprob])
     return pdict,sdict
 
-def writeREALpicks(pdict,sdict,pickPath):
+def writeREALpicks(net,sta,pdict,sdict,pickPath):
     for _day in pdict.keys():
         dayPath = os.path.join(pickPath,_day)
         if not os.path.exists(dayPath):
@@ -71,8 +71,11 @@ def writeREALpl(assoPath,pickPath,
                 V="6.0/3.3",
                 S="5/0/12/1/0.5/0/1.3/1.8",
                 workdir="../../Picks/$year$mon$day",
-                station="./../sta.real",
+                station="../../sta.real",
                 ttime="../../ttdb.txt"):
+    """
+    Prepare perl scripts for REAL run
+    """
     for date in os.listdir(pickPath):
         dayResultPath = os.path.join(assoPath,date)
         if not os.path.exists(dayResultPath):

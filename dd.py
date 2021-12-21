@@ -16,6 +16,7 @@ import multiprocessing as mp
 import time
 import subprocess
 import copy
+from PIL import Image
 
 def load_PC(catalog="/home/zijinping/Desktop/projects/wy_eq/2018_2019_PC/2018_2019_hypoDD.reloc",
             start_evid=300000):
@@ -68,7 +69,7 @@ class DD():
     def init(self):
         self.init_keys()
         self.init_locs()
-        self.init_relative_times()
+        self.init_relative_seconds()
 
     def init_keys(self):
         """
@@ -91,17 +92,17 @@ class DD():
             self.locs.append([lon,lat,dep,mag])
         self.locs = np.array(self.locs)
 
-    def init_relative_times(self):
+    def init_relative_seconds(self):
         """
         Numpy array to save relative seconds to the first event
         """
         self.first_key = self.keys[0]
         self.first_time = self.dict[self.first_key][4]
-        self.relative_times = []
+        self.relative_seconds = []
         for key in self.keys:
             etime = self.dict[key][4]
-            self.relative_times.append(etime-self.first_time)
-        self.relative_times = np.array(self.relative_times)
+            self.relative_seconds.append(etime-self.first_time)
+        self.relative_seconds = np.array(self.relative_seconds)
 
     def update_keys(self,idxs):
         """
@@ -124,11 +125,11 @@ class DD():
         """
         self.locs = self.locs[idxs]
 
-    def update_relative_times(self,idxs):
+    def update_relative_seconds(self,idxs):
         """
         Update relative times with indexs
         """
-        self.relative_times = self.relative_times[idxs]
+        self.relative_seconds = self.relative_seconds[idxs]
         
     def crop(self,lonmin,lonmax,latmin,latmax):
         """
@@ -139,7 +140,17 @@ class DD():
         self.update_keys(idxs)
         self.update_dict()
         self.update_locs(idxs)
-        self.update_relative_times(idxs)
+        self.update_relative_seconds(idxs)
+
+    def magsel(self,mag_low,mag_top=10):
+        """
+        Trim the dataset with the magnitude
+        """
+        idxs = np.where((self.locs[:,3]>=mag_low)&(self.locs[:,3]<=mag_top))
+        self.update_keys(idxs)
+        self.update_dict()
+        self.update_locs(idxs)
+        self.update_relative_seconds(idxs)
 
     def trim(self,starttime,endtime):
         """
@@ -148,23 +159,24 @@ class DD():
         min_reftime = starttime - self.first_time
         max_reftime = endtime - self.first_time
         
-        idxs = np.where((self.relative_times>=min_reftime)&\
-                        (self.relative_times<=max_reftime))
+        idxs = np.where((self.relative_seconds>=min_reftime)&\
+                        (self.relative_seconds<=max_reftime))
         self.update_keys(idxs)
         self.update_dict()
         self.update_locs(idxs)
-        self.update_relative_times(idxs)
+        self.update_relative_seconds(idxs)
 
     def sort(self,method="time"):
-        idxs = self.relative_times.argsort()
+        idxs = self.relative_seconds.argsort()
         self.update_keys(idxs)
         self.update_dict()
         self.update_locs(idxs)
-        self.update_relative_times(idxs)
+        self.update_relative_seconds(idxs)
 
     def hplot(self,
               xlim=[],
               ylim=[],
+              figsize=None,
               edgecolor='grey',
               markersize=6,
               size_ratio=1,
@@ -183,6 +195,9 @@ class DD():
         """
         Map view plot of earthquakes
         """
+        if figsize != None:
+            plt.figure(figsize=figsize)
+
         if section_width <=0:
             raise Error("Width <= 0")
         # plot all events
@@ -194,7 +209,7 @@ class DD():
             jj = np.where(results[:,0]==1)
             if crop == True:
                 self.update_keys(jj)
-                self.update_relative_times(jj)
+                self.update_relative_seconds(jj)
                 self.update_locs(jj)
                 self.update_dict()
                 
@@ -208,7 +223,7 @@ class DD():
                     alpha=1)
         else:
             shift_seconds = ref_time - self.first_time
-            times_plot = self.relative_times-shift_seconds
+            times_plot = self.relative_seconds-shift_seconds
             if unit=="day":
                 times_plot = times_plot/(24*60*60)
             elif unit=="hour":
@@ -300,7 +315,7 @@ class DD():
                     s=(self.locs[jj,3]+2)*size_ratio*5)
         else:
             shift_seconds = ref_time - self.first_time
-            times_plot = self.relative_times[jj]-shift_seconds
+            times_plot = self.relative_seconds[jj]-shift_seconds
             if unit=="day":
                 times_plot = times_plot/(24*60*60)
             elif unit=="hour":
@@ -340,7 +355,7 @@ class DD():
         plt.gca().set_aspect(aspect)
         plt.show()
     
-    def MT_plot(self,ref_time=UTCDateTime(2019,3,1),xlim=[],ylim=[0,5],unit="day",cmap=None,vmin=0,vmax=1):
+    def MT_plot(self,ref_time=UTCDateTime(2019,3,1),xlim=[],ylim=[0,5],unit="day",cmap=None,vmin=0,vmax=1,mlow=0,plt_show=True):
         """
         unit: 'day','hour' or 'second'
         """
@@ -360,15 +375,16 @@ class DD():
             diff_seconds = etime - ref_time
             diff_x = diff_seconds/denominator
             if cmap == None:
-                plt.plot([diff_x,diff_x],[0,emag],c='grey')
+                plt.plot([diff_x,diff_x],[mlow,emag],c='grey')
             else:
-                plt.plot([diff_x,diff_x],[0,emag],color=cmap((diff_x-vmin)/(vmax-vmin)))
+                plt.plot([diff_x,diff_x],[mlow,emag],color=cmap((diff_x-vmin)/(vmax-vmin)))
             plt.plot([diff_x],emag,'x',c='k')
         plt.ylim(ylim)
         if len(xlim)>0:
             plt.xlim(xlim)
         plt.ylabel("Magnitude")
-        plt.show()
+        if plt_show:
+            plt.show()
 
     def dep_dist_plot(self,refid,
                   ref_time=UTCDateTime(2019,3,1),
@@ -436,11 +452,10 @@ class DD():
         ax.set_ylim([depthmax,depthmin])
         plt.show()
         
-    def day_hist(self,ref_time=UTCDateTime(2019,1,1,0,0,0),plot_months=True):
+    def day_hist(self,ref_time=UTCDateTime(2019,1,1,0,0,0),xlim=[],ylim=[],color='b',edgecolor='k',plot_months=True,plt_show=True,figsize=None):
         """
         Plot events by day-quantity in a histogram plot.
         Parameters:
-            -dd_file: Path of hypoDD file
             -ref_time: Reference time for plot
         """
         ref_list = []
@@ -452,9 +467,11 @@ class DD():
         min_day=floor(min(ref_list))
         max_day=ceil(max(ref_list))
         bins = np.linspace(min_day,max_day,max_day-min_day+1)
-        fig1 = plt.figure(1,figsize=(8,4))
+        if figsize==None:
+            figsize=(8,4)
+        fig1 = plt.figure(1,figsize=figsize)
         ax1 = plt.subplot(1,1,1)
-        ax1.hist(ref_list,bins)
+        ax1.hist(ref_list,bins,color=color,edgecolor=edgecolor)
         # The bottom x-axis is in days
         ax1.set_xlim([0,max_day])
         # The top x-axis marks year and month in YYYYMM
@@ -486,16 +503,206 @@ class DD():
             ax2.plot(0,0,'k.')
             plt.xticks(tick_list_1,tick_list_2)
             ax2.set_xlabel("date")
+        if xlim!=[]:
+            ax1.set_xlim(xlim)
+            if plot_months:
+                ax2.set_xlim(xlim)
+        if ylim!=[]:
+            plt.ylim(ylim)
         ax1.set_xlabel("Time, days")
         ax1.set_ylabel("event quantity")
-        plt.show()
+        if plt_show:
+            plt.show()
+
+    def diffusion_plot(self,refid=None,refloc=[],diff_cfs=[],unit="day",xlim=[],ylim=[],plt_show=True):
+        '''
+        Parameters:
+        refid: reference event id
+        refloc: [lon,lat], reference site longitude and latitude, if not provided, use refid
+        diff_cfs: diffusion coefficient list, this will draw corresponding lines on the map
+        '''
+        if refid==None and refloc==[]:
+            raise Exception("refid or refloc should be proivded")
+        if refloc==[]:
+            refloc=[self.dict[refid][0],self.dict[refid][1]]
+        dist_list = np.zeros((len(self.keys),1))
+        day_list = np.zeros((len(self.keys),1))
+        mag_list = np.zeros((len(self.keys),1))
+        for i in range(len(self.keys)):
+            dist,_,_ = gps2dist_azimuth(self.locs[i,1],\
+                                self.locs[i,0],\
+                                refloc[1],\
+                                refloc[0])
+            day_list[i,0] = (self.relative_seconds[i]-np.min(self.relative_seconds))/(24*60*60)
+            mag_list[i,0] = self.locs[i,3]
+            dist_list[i,0] = dist
+
+        fig1 = plt.figure(1)
+        ax1 = plt.subplot(1,1,1)
+        if unit=="day":
+            x_list = day_list
+            plt.xlabel("Time (day)",fontsize=16)
+        elif unit == "hour":
+            x_list = day_list*24
+            plt.xlabel("Time (hour)",fontsize=16)
+        else:
+            raise Exception("Unit error: 'day' or 'hour'")
+        ax1.set_ylabel("Distance (m)",fontsize=16)
+        ax1.scatter(x_list,dist_list,(mag_list+2)*3,c='k')
+        ax1.set_xlim([0,np.max(x_list)])
+
+        diff_lines = []
+        if isinstance(diff_cfs,int) or isinstance(diff_cfs,float):
+            diff_cfs=[diff_cfs]
+        for diff_cf in diff_cfs:
+            if unit=="day":
+                x = np.linspace(0,np.max(x_list),int(np.max(x_list)*20)+1)
+                y = np.sqrt(4*np.pi*diff_cf*x*24*60*60)
+            elif unit=="hour":
+                x = np.linspace(0,np.max(x_list),int(np.max(x_list)*20)+1)
+                y = np.sqrt(4*np.pi*diff_cf*x*60*60)
+            diff_line, = plt.plot(x,y)
+            diff_lines.append(diff_line)
+
+        plt.legend(diff_lines,diff_cfs,title="Diffusion Coefficient $m^2/s$")
+        if len(xlim)>0:
+            plt.xlim(xlim)
+        if len(ylim)>0:
+            plt.ylim(ylim)
+        else:
+            plt.ylim(bottom=0)
+        if plt_show:
+            plt.show()
+
+    def animation(self,
+                  incre_hour=2,
+                  mb_time=None,
+                  me_time=None,
+                  xlim=[],
+                  ylim=[],
+                  geopara=None,
+                  cmap=None,
+                  vmin=None,
+                  vmax=None):
+        """
+        Generate gif animation file
+        increment: Time increased for each plot. Unit: hour
+        """
+        # Remove previous results
+        try:
+            shutil.rmtree("dd_animation")
+        except:
+            pass
+        os.makedirs("dd_animation")
+        if xlim == []:
+            xlim = [np.min(self.locs[:,0]),np.max(self.locs[:,0])]
+        if ylim == []:
+            ylim = [np.min(self.locs[:,1]),np.max(self.locs[:,1])]    
+        min_time = self.first_time+np.min(self.relative_seconds)
+        max_time = self.first_time+np.max(self.relative_seconds)
+        if mb_time == None:
+            mb_time = min_time
+        if me_time == None:
+            me_time = max_time
+        print("Movie start time is: ",mb_time)
+        print("  Movie end time is: ",me_time)
+
+        if vmin == None:
+            vmin = 0
+        if vmax == None:
+            vmax = (max_time - min_time)/(24*60*60)
+
+        inc_second = incre_hour*60*60 # Time increment
+        loop_time = mb_time
+        count = 1
+        ref_time = mb_time
+        while loop_time <= me_time:
+            fig = plt.figure(1,figsize=(8,8))
+            ax1 = fig.add_subplot(111)
+            ax1.set_xlim(xlim)
+            ax1.set_ylim(ylim)
+            ax1.set_xlabel("Lon(degree)",fontsize=18)
+            ax1.set_ylabel("Lat(degree)",fontsize=18)
+            ax1.set_title(f"{str(loop_time)[:19]}",fontsize=16)
+            if geopara != None:
+                # ----------------Molin faults--------------------------------
+                ml_fault = np.array(geopara.dict['ml_fault'])
+                ML_fault,=ax1.plot(ml_fault[:,0],ml_fault[:,1],'r-')
+                # ----------------Zigong faults-------------------------------
+                for key in geopara.dict['zg_faults']:
+                    array = np.array(geopara.dict['zg_faults'][key])
+                    ax1.plot(array[:,0],array[:,1],'k-',label='Faults')
+                #----------------------Wells-----------------------------------
+                wells = np.array(geopara.dict['wells'])
+                well_lons=[]; well_lats=[]
+                for well in geopara.dict['wells']:
+                    well_lons.append(well[0])
+                    well_lats.append(well[1])
+                s_well,=ax1.plot(well_lons,well_lats,'s',c='#1f77b4',markerfacecolor='white',mew=2,markersize=12)
+                #----------------------Stations--------------------------------
+                sta_lons=[]; sta_lats=[]
+                for sta in geopara.dict['sta_locs']:
+                    if sta[3]=="SC":
+                        sta_lons.append(sta[0]); sta_lats.append(sta[1])
+                if len(sta_lons)>0:
+                    s_sta=ax1.scatter(sta_lons,sta_lats,marker='^',c='cyan',s=120,edgecolor='k',label='Stations')
+            #------------- Events -----------------------------------------
+            eve_arr = []
+            rela_days = []
+            for i,second in enumerate(self.relative_seconds):
+                e_time = self.first_time + second
+                if e_time<(loop_time+inc_second/2) and e_time>mb_time:
+                    eve_arr.append(self.locs[i,:4])
+                    rela_days.append((e_time-ref_time)/(24*60*60))
+            eve_arr = np.array(eve_arr)
+            rela_days = np.array(rela_days)
+
+            if len(eve_arr)>0:
+                if cmap != None:
+                        s_eve=ax1.scatter(eve_arr[:,0],
+                                          eve_arr[:,1],
+                                          s=(eve_arr[:,3]+2)*5,
+                                          c=rela_days,
+                                          cmap=cmap,
+                                          vmin=vmin,
+                                          vmax=vmax,
+                                          label="Events")
+                else:
+                        s_eve=ax1.scatter(eve_arr[:,0],
+                                          eve_arr[:,1],
+                                          s=(eve_arr[:,3]+2)*5,
+                                          c='k',
+                                          label="Events")
+            if geopara != None:
+                plt.legend([s_well,s_sta,s_eve],\
+                       ["Platform",'Station',"Seismicity"],\
+                       loc='upper right',
+                       fontsize=16)  
+            ##------------- save results --------------------------------------------
+            plt.savefig(f"dd_animation/{str(count).zfill(3)}.png")
+            loop_time = loop_time + inc_second
+            count+=1
+            plt.close()
+        #-------------------- gif -----------------------------
+        imgs = []
+        for i in range(1,count):
+            pic_name = f'dd_animation/{str(i).zfill(3)}.png'
+            tmp = Image.open(pic_name)
+            imgs.append(tmp)
+        imgs[0].save("dd_animation.gif",save_all=True,append_images=imgs,duration=10)
 
     def copy(self):
         return copy.deepcopy(self)
-    
+    def merge(self,dd2):
+        for key in dd2.keys:
+            if key in self.keys:
+                raise Exception(f"Key error {key}. Please avoid using the same key value")
+            self.dict[key]=dd2.dict[key]
+        self.init()
+
     def __repr__(self):
         _qty = f"HypoDD relocation catalog with {len(self.dict.keys())} events\n"
-        _time= f"     Time range is: {self.first_time+np.min(self.relative_times)} to {self.first_time+np.max(self.relative_times)}\n"
+        _time= f"     Time range is: {self.first_time+np.min(self.relative_seconds)} to {self.first_time+np.max(self.relative_seconds)}\n"
         _mag = f" Magnitue range is: {format(np.min(self.locs[:,3]),'4.1f')} to {format(np.max(self.locs[:,3]),'4.1f')}\n"
         _lon = f"Longitude range is: {format(np.min(self.locs[:,0]),'8.3f')} to {format(np.max(self.locs[:,0]),'8.3f')}\n"
         _lat = f" Latitude range is: {format(np.min(self.locs[:,1]),'7.3f')} to {format(np.max(self.locs[:,1]),'7.3f')}\n"

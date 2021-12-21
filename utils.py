@@ -19,6 +19,17 @@ from obspy.geodetics import gps2dist_azimuth
 import logging
 import pickle
 from numba import cuda
+from distutils.sysconfig import get_python_lib
+
+def add_path():
+    print(">>> Add path to python library ...")
+    pwd = os.getcwd()
+    lib_path = get_python_lib()
+    path_file = os.path.join(lib_path,'added.pth')
+    with open(path_file,'a') as f:
+        f.write(pwd)
+
+    print("Done!")
 
 cuda.jit()
 def _matmul_gpu(A,B,C):
