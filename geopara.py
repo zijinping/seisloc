@@ -1,25 +1,33 @@
 import re
+import os
+import matplotlib.pyplot as plt
+from matplotlib.path import Path
+from matplotlib import collections
+import matplotlib.patches as patches
 
-class WY_para():
+class WYpara():
     '''
     This class reads parameters in "wy.para", which contains parameters for GMT plot.
     '''
-    def __init__(self,para_path="/home/zijinping/Desktop/zijinping/resources/wy.para"):
+    def __init__(self,para_file="/home/zijinping/Desktop/zijinping/resources/wy.para"):
         self.dict={}
-        with open(para_path) as f:
+        with open(para_file) as f:
             lines = f.readlines()
             for line in lines:
                 line = line.rstrip()
-                if len(line)==0 or line[0]=='#' or line[:4]=="gmt ": # ignore comment line and gmt set line
+                if len(line)==0 or line[0]=='#' or \
+                   line[:4]=="gmt ":                    # ignore comment line and gmt set line
                     continue
                 if line[:9]=="root_path":
-                     self.dict["root_path"] = re.split("=",line.rstrip())[1]
-                     continue
+                    self.dict["root_path"] = re.split("=",line.rstrip())[1]
+                    continue
                 content = re.split(" +",line.rstrip())[0]
                 para,info = re.split("=",content)
-                if len(re.split("\$",info))>1: # $ indicates citation of other parameters
+                para = para.strip()                     # remove fore and end spaces
+                info = info.strip()
+                if len(re.split("\$",info))>1:          # $ indicates citation of other parameters
                     for seg in re.split("\$",info)[1:]: # seperate each citation
-                        sub = re.split("[/]",seg)[0]   # get the cited parameter name
+                        sub = re.split("[/]",seg)[0]    # get the cited parameter name
                         info=info.replace("$"+sub,self.dict[sub])
                 self.dict[para]=info
         f.close()
@@ -34,7 +42,7 @@ class WY_para():
                 tmp_arr.append([float(_lon),float(_lat)])
         f.close()
         self.dict['ml_fault']=tmp_arr
-        #------------------------------------------------------------------------------------------------
+        #---------------------------------------------------------
         tmp_dict={}
         count = 0
         with open(self.dict['zg_faults'],'r') as f:
@@ -101,9 +109,122 @@ class WY_para():
         self.vel_vp =     [3.38,4.92,4.92,5.19,5.46,6.10,6.57,6.60,6.61,6.63,6.70,6.85,7.09,7.27,7.44,7.61]
         self.vel_vs =     [1.61,2.68,2.73,2.83,3.14,3.42,3.42,3.82,3.83,3.84,3.87,3.96,4.10,4.20,4.30,4.40]
 
+    def wellpad(self,pad_name,platform_edgecolor='k',platform_facecolor='white',well_edgecolor='k',lw=2):
+        """
+        Read in designated pad_name pad, the file name should be pad_name+'.pad'
+        """
+        pad_dir = self.dict["pad_dir"]
+        pad_file = os.path.join(pad_dir,pad_name+'.pad')
+        col = wellpad(pad_file,
+                platform_edgecolor = platform_edgecolor,
+                platform_facecolor = platform_facecolor,
+                well_edgecolor = well_edgecolor,
+                lw = lw)
+        return col
+    
+    def wellpads(self,platform_edgecolor='k',platform_facecolor='white',well_edgecolor='k',lw=2):
+        """
+        Read in all wellpads with file name end with ".pad"
+        """
+        cols = []
+        for file in os.listdir(self.dict["pad_dir"]):
+            if file[-3:] == "pad":
+                pad_name = file[:-4]
+                col = self.wellpad(pad_name,
+                              platform_edgecolor = platform_edgecolor,
+                              platform_facecolor = platform_facecolor,
+                              well_edgecolor = well_edgecolor,
+                              lw = lw)
+                cols.append(col)
+        return cols
+    
     def __str__(self):
         return "%s" %str(self.dict.keys())
     def __repr__(self):
         return "%s" %str(self.dict.keys())
     def __getitem__(self,item):
         return self.dict[item]
+    
+def read_pad_file(pad_file):
+    """
+    Line start with '#' is comment line.
+
+    The first line is basic information line with format:
+    Well_pad_name well_pad_lon well_pad_lon well_branch_scaling_factor(after scaling, the unit is degree)
+    The reason for such format is because that the information is extracted from image by Coreldraw, 
+    It is better to describe the relative position between horizontal well controlling points and platform
+    e.g. W204H37 104.8075537 29.58421817 0.003753575
+
+    For each later line, it presents one horizontal well, it is constrained by two points in the format:
+    dx1 dy1 dx2 dy2, ..., dxs,dys # description
+    The longitude and latitude of controlling points is:
+    (well_pad_lon + dx1*scaling_factor, well_pad_lat+dx1*scaling_factor)
+
+    The estimated uncertainty is ~3.3%
+    """
+    cont = []
+    with open(pad_file,'r') as f:
+        i = 0 # line counter
+        for line in f:
+            line = line.strip()
+            if len(line) == 0 or line[0] == "#": # empty line and comment line
+                continue
+            line = re.split("#",line)[0]
+            if i == 0:
+                pad_name, _lon,_lat,_sf = re.split(" +",line) # _sf, scaling factor
+                cont.append([pad_name,float(_lon),float(_lat),float(_sf)])
+            else:
+                tmp_list = []
+                for _tmp in re.split(" +",line):
+                    if len(_tmp)==0:
+                        continue
+                    tmp_list.append(float(_tmp))
+                cont.append(tmp_list)
+#                _dx1,_dy1,_dx2,_dy2 = re.split(" +",line)[:4]
+#                cont.append([float(_dx1),float(_dy1),float(_dx2),float(_dy2)])
+            i = i+1
+    return cont
+
+def wellpad(pad_file,platform_edgecolor='k',platform_facecolor='white',well_edgecolor='k',lw=2):
+    """
+    Read in designated pad_name pad, the file name should be pad_name+'.pad'
+    """
+    if not os.path.exists(pad_file):
+        print("Pad not in the pads library")
+
+    cont = read_pad_file(pad_file)
+    collect = []
+    lon = cont[0][1]; lat = cont[0][2]; sf = cont[0][3] # sf: scaling factor
+
+    for _,args in enumerate(cont[1:]):    # Horizontal wells
+        verts = [(lon,lat)]
+        codes = [Path.MOVETO]
+        if len(args) == 0:
+            raise Exception("Error: No point information in the horizontal well line")
+        if len(args)%2 == 1:
+            raise Exception("Error: dx,dy list not in pairs")
+        for i in range(int(len(args)/2)):
+            dx1 = args[2*i]; dy1 = args[2*i+1]
+            dlon1 = dx1 * sf; lon1 = lon + dlon1;
+            dlat1 = dy1 * sf; lat1 = lat + dlat1;
+            verts.append((lon1,lat1))
+            codes.append(Path.LINETO)
+        path = Path(verts,codes)
+        patch = patches.PathPatch(path,facecolor='none',edgecolor=well_edgecolor,lw=lw)
+        collect.append(patch)
+    # For platform square
+    verts = [(lon+0.0009*2,lat+0.0009*2),
+             (lon+0.0009*2,lat-0.0009*2),
+             (lon-0.0009*2,lat-0.0009*2),
+             (lon-0.0009*2,lat+0.0009*2),
+             (lon+0.0009*2,lat+0.0009*2)]
+    codes = [Path.MOVETO,
+             Path.LINETO,
+             Path.LINETO,
+             Path.LINETO,
+             Path.CLOSEPOLY]
+    path = Path(verts,codes)
+    patch = patches.PathPatch(path,facecolor=platform_facecolor,edgecolor=platform_edgecolor,lw=lw)
+    collect.append(patch)
+    col = collections.PatchCollection(collect,match_original=True)
+    return col

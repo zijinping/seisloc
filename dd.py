@@ -1,23 +1,23 @@
-from obspy import UTCDateTime
-from obspy.geodetics import gps2dist_azimuth
 import re
-from seisloc.hypoinv import load_sum_evstr,load_sum_evid
 import os
 import glob
+import shutil
+import random
+from obspy import UTCDateTime
+from obspy.geodetics import gps2dist_azimuth
+from seisloc.hypoinv import load_sum_evstr,load_sum_evid
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from seisloc.geometry import in_rectangle,loc_by_width
 from math import ceil,floor
-import shutil
-import random
 import multiprocessing as mp
 import time
 import subprocess
 import copy
 from PIL import Image
-
+#
 def load_PC(catalog="/home/zijinping/Desktop/projects/wy_eq/2018_2019_PC/2018_2019_hypoDD.reloc",
             start_evid=300000):
     """
@@ -59,13 +59,26 @@ def load_CEDC(catalog="/home/zijinping/Dropbox/resources/catalog/CEDC/20090101_2
 
 class DD():
     def __init__(self,reloc_file="hypoDD.reloc"):
+        """
+        The programme will read in hypoDD relocation file by default. If no hypoDD
+        file provided, it will generate an empty catalog. A user can set up a new 
+        catalog by providing a dict in the form:
+            dict[evid] = [lon,lat,dep,mag,UTCDateTime]
+        example:
+        >>> dd = DD()
+        >>> dd.dict = cata_dict  #cata_dict is a dictionary following above format
+        >>> dd.init()
+        >>> print(dd)
+        """
         try:
             self.dict,_ = load_DD(reloc_file)
             self.init()
         except:
             print("No hypoDD data read in, an empty catalog generated")
-            print("You can define self.dict[key] = [lon,lat,dep,mag,UTCDateTime]}")
+            print("You can define self.dict[evid] = [lon,lat,dep,mag,UTCDateTime]}")
             print("Then run: .init() function")
+            self.dict = {}
+
     def init(self):
         self.init_keys()
         self.init_locs()

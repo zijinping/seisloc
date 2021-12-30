@@ -5,6 +5,7 @@ import re
 import numpy as np
 import pickle
 from tqdm import tqdm
+from numba import jit
 
 def xcorr(data1,data2,max_shift_num):
     len1 = len(data1)
