@@ -80,7 +80,7 @@ class Eqcluster():
                  dtcc_phases=['P','S'],
                  dtcc_minobs=4,
                  dtcc_mean_cc_threshold=0.7):
-        
+        self.cc_threshold = dtcc_mean_cc_threshold
         self.pairs = load_dtcc(dtcc_file,
                                save_pkl=dtcc_save_pkl,
                                phases=dtcc_phases,
@@ -116,6 +116,9 @@ class Eqcluster():
             self.cc_matrix[k1[0],k2[0]] = cc
             self.cc_matrix[k2[0],k1[0]] = cc
             
+        self.in_matrix_evids = self.cc_evids.copy()
+        self.cluster_matrix = self.cc_matrix.copy()
+            
     def clustering(self,evids=[],tolerance=0,method='average'):
         """
         Parameters:
@@ -125,13 +128,11 @@ class Eqcluster():
         # build cluster matrix
         if len(evids) == 0:       
             self.input_evids = self.evids.copy()
-            self.cluster_matrix = self.cc_matrix.copy()
-            self.in_matrix_evids = self.cc_evids.copy()
         else:
             self.input_evids = evids
             idxs = []
             for evid in self.input_evids:
-                idx = np.where(self.cc_evids==evid)
+                idx = np.where(self.in_matrix_evids==evid)
                 idxs.append(idx[0][0])
             self.update_cluster(idxs)
         
@@ -154,21 +155,30 @@ class Eqcluster():
         """
         tmp = []
         for idx in idxs:
-            tmp.append(self.cc_evids[int(idx)])
+            tmp.append(self.in_matrix_evids[int(idx)])
         self.in_matrix_evids = tmp
-        self.cluster_matrix = self.cc_matrix[idxs]
+        self.cluster_matrix = self.cluster_matrix[idxs]
         self.cluster_matrix = self.cluster_matrix[:,idxs]
         
         self.out_matrix_evids = []
         for evid in self.input_evids:
             if evid not in self.in_matrix_evids:
-                 self.out_matrix_evids.append(evid) 
+                 self.out_matrix_evids.append(evid)
+        
+        self.in_matrix_evids = np.array(self.in_matrix_evids)
+        self.out_matrix_evids = np.array(self.out_matrix_evids)
           
-    def dendrogram(self,xlim=[],figsize=(8,6)):
+    def dendrogram(self,xlim=[],figsize=(8,6),max_d=None,leaf_rotation=0):
         fig,ax = plt.subplots(1,figsize=figsize)
         if len(xlim)>0:
             ax.set_xlim(xlim)
-        self.dn = dendrogram(self.Z)
+        self.dn = dendrogram(self.Z,leaf_rotation=leaf_rotation)
+        
+        if max_d != None:
+            plt.axhline(y=max_d, c='k')
+            
+        plt.xlabel("sample index")
+        plt.ylabel("distance")
         
     def fancy_dendrogram(self,
                          truncate_mode='lastp',
@@ -176,22 +186,27 @@ class Eqcluster():
                          show_contracted=True,
                          max_d=None,
                          annotate_above=0,
+                         leaf_rotation=0,
                          xytext=(0,-1),
                          no_plot=False):
         """
         https://joernhees.de/blog/2015/08/26/scipy-hierarchical-clustering-and-dendrogram-tutorial/
         """       
-        self.dn = dendrogram(self.Z,
+        self.dn2 = dendrogram(self.Z,
                              truncate_mode=truncate_mode,
                              p=p,
-                             show_contracted=show_contracted)
+                             show_contracted=show_contracted,
+                             leaf_rotation=leaf_rotation)
         
         if not no_plot:
             plt.title('Hierarchical Clustering Dendrogram (truncated)')
-            plt.xlabel("sample index or (cluster size)")
+            plt.xlabel("sample index")
             plt.ylabel("distance")
             
-            for i,d,c in zip(self.dn['icoord'],self.dn['dcoord'],self.dn['color_list']):
+        if max_d != None:
+            plt.axhline(y=max_d, c='k')
+            
+            for i,d,c in zip(self.dn2['icoord'],self.dn2['dcoord'],self.dn2['color_list']):
                 x = 0.5 * sum(i[1:3])      # "x1, x2, x3, x4", here 'x2,x3'
                 y = d[1]                   # "y1, y2, y3, y4", here 'y2'
                 if y > annotate_above:
@@ -200,8 +215,15 @@ class Eqcluster():
                                 textcoords='offset points',
                                 va = 'top',
                                 ha = 'center')
-        
+            
     def heatmap(self,source='cluster',xlim=[],ylim=[],figsize=(5,5)):
+        """
+        Parameters:
+        source: 'dd' to show the orignal time-sequence heatmap
+                'cluster' to show the clustered heatmap
+        xlim: set plt.xlim if not empty
+        ylim: set plt.ylim if not empty
+        """
         fig,ax = plt.subplots(1,figsize=figsize)
         if source == "dd":
             disp_matrix = self.cc_matrix
@@ -214,34 +236,87 @@ class Eqcluster():
                 disp_matrix[i,i] = 1
             disp_matrix = disp_matrix[self.dn['leaves']]
             disp_matrix = disp_matrix[:,self.dn['leaves']]
-            
+
         if len(xlim)>0:
             plt.xlim(ylim)
         if len(ylim)>0:
             plt.ylim(ylim)
-        plt.pcolormesh(disp_matrix)
+        plt.pcolormesh(disp_matrix,cmap='viridis',vmin=self.cc_threshold,vmax=1)
         plt.gca().set_aspect('equal')
         plt.xlabel("Event No")
         plt.ylabel("Event No")
+        plt.colorbar()
 
-    def mapview(self,max_d,criterion='distance',xlim=[],ylim=[],figsize=(10,5),mag_base=1):
+    def fcluster(self,max_d,criterion='distance'):
+        """
+        Categorize clusters and generate self.clusters_evids dict
+        refer to: scipy.cluster.hierarchy.fcluster¶
+        """
+        self.cluster_category = fcluster(self.Z,max_d,criterion=criterion)
+        print("Num of clusters: ",len(set(self.cluster_category)))
+        self.clusters_evids = {}
+
+        for cluster_id in np.unique(self.cluster_category):
+            self.clusters_evids[cluster_id] = self.get_cluster_evids(cluster_id)
+
+    def mapview(self,clusters=[],xlim=[],ylim=[],figsize=(10,5),mag_base=1):
         """
         Showing corresponding map view of earthquake locations
+        Parameters:
+        |   clusters: empty list for plot all, otherwide plot clusters in the list
+        |       xlim: if not empty, set plt.xlim
+        |       ylim: if not empty, set plt.ylim
+        |   mag_base: parameters control the magnitude size
         """
         fig,ax = plt.subplots(1,figsize=figsize)
-        clusters = fcluster(self.Z,max_d,criterion=criterion)
-        print("Num of clusters: ",len(set(clusters)))
+
         lons = []
         lats = []
         mags = []
+               
         for evid in self.in_matrix_evids:
             lons.append(self.dd_dict[evid][0])
             lats.append(self.dd_dict[evid][1])
             mags.append(self.dd_dict[evid][3])
+        lons = np.array(lons)
+        lats = np.array(lats)
         mags = np.array(mags)
-        plt.scatter(lons,lats,c=clusters,s=mags-np.min(mags)+mag_base,cmap='tab20')
+        cmap = matplotlib.cm.get_cmap('tab20',int(np.max(self.cluster_category)))
+        
+        if len(clusters)==0:
+            plt.scatter(lons,lats,
+                        c=self.cluster_category,
+                        s=mags-np.min(mags)+mag_base,
+                        cmap=cmap,vmin=1,
+                        vmax=int(np.max(self.cluster_category))+1)
+        else:
+            kks = np.array([],dtype=int)
+            for cid in clusters:
+                kk = np.where(self.cluster_category==cid)
+                kks = np.concatenate((kks,kk[0]))
+            plt.scatter(lons[kks],lats[kks],
+                        c=self.cluster_category[kks],
+                        s=mags[kks]-np.min(mags)+mag_base,
+                        cmap=cmap,vmin=1,
+                        vmax=int(np.max(self.cluster_category))+1)
+                
         if len(xlim)>0:
             plt.xlim(xlim)
         if len(ylim)>0:
             plt.ylim(ylim)
         ax.set_aspect('equal')
+        plt.xlabel("Longitude")
+        plt.ylabel("Latitude")
+        cb = plt.colorbar()
+        cb.set_label("Cluster")
+        
+    def get_cluster_evids(self,cluster_id):
+        kk = np.where(self.cluster_category==cluster_id)
+        sel_cluster_evids = self.in_matrix_evids[kk[0]]   
+        
+        return sel_cluster_evids
+    
+    def __repr__(self):
+        str1 = f"Eqcluster object with {len(self.evids)} events in hypoDD relocation file\n"
+        str2 = f"{len(self.evids)} events constrained by dt.cc file"
+        return str1+str2
