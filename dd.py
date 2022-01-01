@@ -1030,7 +1030,7 @@ def load_DD(reloc_file="hypoDD.reloc",shift_hour=0):
 
     Parameters
     ----------
-    If the time of results is not in UTC time zone, a time shift is needed.
+    If the time of results is not in UTC time zone, a time shift might needed.
     For example, Beijing time zone is 8 hours early than UTC time, 8 hours 
     should be deducted so as to be consistent with UTC time.
     """
