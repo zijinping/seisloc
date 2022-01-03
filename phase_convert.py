@@ -273,7 +273,7 @@ def SC2fdsn(in_file,subset=None):
         f.write("SC|")
         f.write("01|")
         f.write(mag_type+'|')
-        f.write(format(e_mag,'5.2f')+"|")
+        f.write(format(e_mag+0.01,'5.2f')+"|")
         f.write("SC Agency|")
         f.write("SC\n")
     f.close()
