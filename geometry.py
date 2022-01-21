@@ -275,3 +275,183 @@ def densityMap(lonlist,latlist,locs,longap,latgap,near=5):
                             if (i+kk)>=0 and (i+kk)<len(latlist) and (j+ll)>=0 and (j+ll)<len(lonlist):
                                 denSums[i+kk,j+ll]+=1
     return denCounts,denSums
+
+def cartesian_rotate(xy,center,deg):
+    """
+    Degree is positive for anticlockwise
+    """
+    if isinstance(xy,list):
+        xy = np.array(xy)
+    if len(xy.shape)==1:
+        raise Exception("xy should be 2 dimensional matrix")
+    if isinstance(center,list):
+        center = np.array(center)
+        
+    xy_ref = xy - center
+
+    rotate_matrix = [[np.cos(deg/180*pi),-np.sin(deg/180*pi)],[np.sin(deg/180*pi),np.cos(deg/180*pi)]]
+    rotate_matrix = np.array(rotate_matrix)
+
+    xy_rotate = np.matmul(rotate_matrix,xy_ref.T).T + center
+    
+    return xy_rotate
+
+def event_rotate(inFile,center,deg):
+    """
+    Rotate event input file for tomoDD
+    """
+    outFile = inFile+".rot"
+    cont = []
+    xys = []
+    with open(inFile,'r') as f:
+        for line in f:
+            line = line.rstrip()
+            cont.append(line)
+            _lat,_lon = line[20:39].split()
+            lat = float(_lat)
+            lon = float(_lon)
+            xys.append([lon,lat])
+    xys_rot = spherical_rotate(xys,center=center,rotate=deg)
+    #xys_rot = rotate(xys,center=center,deg=deg)
+
+    f = open(outFile,'w')
+    for i in range(len(cont)):
+        line = cont[i]
+        f.write(line[:20])
+        f.write(format(xys_rot[i,1],">8.4f"))
+        f.write("  ")
+        f.write(format(xys_rot[i,0],">9.4f"))
+        f.write(line[39:])
+        f.write("\n")
+
+def sta_rotate(inFile,center,deg):
+    """
+    Rotate station file for tomoDD
+    """
+    outFile = inFile+".rot"
+    xys = []
+    stas = []
+    lonlats = []
+    _eles = []
+    with open(inFile,'r') as f:
+        for line in f:
+            line = line.rstrip()
+            sta,_lat,_lon,_ele = line.split()
+            stas.append(sta)
+            lonlats.append([float(_lon),float(_lat)])
+            _eles.append(_ele)
+            
+    lonlats_rot = spherical_rotate(lonlats,center=center,rotate=deg)
+    #lonlats_rot = rotate(lonlats,center=center,deg=deg)
+    f = open(outFile,'w')
+    for i in range(len(stas)):
+        f.write(format(stas[i],"<7s"))
+        f.write(" ")
+        f.write(format(lonlats_rot[i,1],'>10.6f'))
+        f.write(" ")
+        f.write(format(lonlats_rot[i,0],'>11.6f'))
+        f.write(" ")
+        f.write(_eles[i])
+        f.write("\n")
+
+def spherical_rotate(lonlats,center,rotate):
+    lonlatBs = lonlats.copy()
+    if isinstance(lonlatBs,list):
+        lonlatBs = np.array(lonlatBs)
+    lonlatCs = []
+    if len(lonlatBs.shape) == 1:
+        lonC,latC = _spherical_rotate(lonlatBs,center,rotate)
+        lonlatCs.append([lonC,latC])
+    else:
+        for i in range(lonlatBs.shape[0]):
+            lonC,latC = _spherical_rotate(lonlatBs[i,:],center,rotate)
+            lonlatCs.append([lonC,latC])
+    return np.array(lonlatCs)
+            
+def _spherical_rotate(lonlatB,center,rotate):
+
+    # A the rotation center, 
+    # B the point need to be rotated
+    # C the rotated point
+    # P the north pole
+    # O the sphere center
+
+    lonA = np.deg2rad(center[0])
+    latA = np.deg2rad(center[1])
+    lonB = np.deg2rad(lonlatB[0])
+    latB = np.deg2rad(lonlatB[1])
+    
+    rotate = np.deg2rad(rotate)
+    
+    if rotate % (2*pi) == 0:
+        lonC = lonB
+        latC = latB
+        return lonC,latC
+
+    dist_deg = spherical_dist(center[0],center[1],lonlatB[0],lonlatB[1])
+    AOB = np.deg2rad(dist_deg)
+
+    dlon = lonB - lonA
+    dlat = latB - latA
+        
+    # spherical sines law
+    # sin(PAB) = sin(POB)*sin(APB)/sin(AOB)
+    
+    if dlon>=0:
+        tmp = sin(pi/2-latB)*sin(dlon)/sin(AOB)
+        if tmp >=1 and tmp <= 1.00000001:
+            tmp = 1
+        if dlat >=0:
+            PAB = asin(tmp)
+        else:
+            PAB = pi - asin(tmp)
+        PAC = PAB - rotate
+
+        # cos(a) = cos(b)cos(c)+sin(b)sin(c)cos(A)
+        AOC = AOB # spherical dist is the same before and after rotation
+        POC = acos(cos(pi/2-latA)*cos(AOC)+sin(pi/2-latA)*sin(AOC)*cos(PAC))
+        latC = pi/2 - POC
+
+        # sines law
+        tmp = sin(AOC)*sin(PAC)/sin(POC)
+        if tmp >=1 and tmp <= 1.00000001:
+            tmp = 1
+        APC = asin(tmp)
+        lonC = lonA + APC
+    else:
+        tmp = -sin(pi/2-latB)*sin(dlon)/sin(AOB)
+        if tmp >=1 and tmp <= 1.00000001:
+            tmp = 1
+        if dlat >=0:
+            PAB = asin(tmp)
+        else:
+            PAB = pi - asin(tmp)
+        PAC = PAB + rotate      
+
+        # cos(a) = cos(b)cos(c)+sin(b)sin(c)cos(A)
+        AOC = AOB # spherical dist is the same before and after rotation
+        POC = acos(cos(pi/2-latA)*cos(AOC)+sin(pi/2-latA)*sin(AOC)*cos(PAC))
+        latC = pi/2 - POC
+
+        # sines law
+        tmp = sin(AOC)*sin(PAC)/sin(POC)
+        if tmp >=1 and tmp <= 1.00000001:
+            tmp = 1
+        APC = asin(tmp)
+        lonC = lonA - APC
+    # quality control
+    BOC_deg = spherical_dist(np.rad2deg(lonB),np.rad2deg(latB),np.rad2deg(lonC),np.rad2deg(latC))
+    BOC = np.deg2rad(BOC_deg)
+    tmp = (cos(BOC)-cos(AOC)*cos(AOB))/(sin(AOC)*sin(AOB))
+    if tmp > 1 and tmp < 1.000001:
+        tmp = 1
+    if tmp <-1 and tmp > -1.000001:
+        tmp = -1
+    inverse_rotate = acos(tmp)
+    
+    assert (np.abs(inverse_rotate) - np.abs(rotate)) <=0.01
+    distAB = spherical_dist(np.rad2deg(lonA),np.rad2deg(latA),np.rad2deg(lonB),np.rad2deg(latB))
+    distAC = spherical_dist(np.rad2deg(lonA),np.rad2deg(latA),np.rad2deg(lonC),np.rad2deg(latC))        
+    assert (distAB-distAC)<=0.000001
+
+    return np.rad2deg(lonC),np.rad2deg(latC)

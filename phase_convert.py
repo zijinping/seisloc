@@ -11,9 +11,9 @@ from obspy import UTCDateTime
 import os
 import sys
 import time
-from seisloc.dd import load_DD
+from seisloc.dd import loadDD
 import time
-from seisloc.geopara import WY_para
+from seisloc.geopara import WYpara
 from tqdm import tqdm
 
 
@@ -140,7 +140,7 @@ def dd2fdsn(in_file,subset=None):
     f=open(out_file,'w')
     f.write("#EventID|Time|Latitude|Longitude|Depth/km|Author|Catalog|Contributor|ContributorID|MagType|Magnitude|MagAuthor|EventLocationName\n")
     f.close()
-    eve_dict,df = load_DD(reloc_file=in_file)
+    eve_dict,df = loadDD(reloc_file=in_file)
     T1 = time.time()
     print("%f seconds passed to load hypoDD file" %(T1-T0))
     eve_list = list(eve_dict)
@@ -479,7 +479,7 @@ def ncsn2pha(source_file,target_file):
             f.write(line)
             f.write('\n')
                 
-def sc2phs(file_list=[],lonlats=[-999,-999,-999,-999],magThreshold=-9):
+def sc2phs(file_list=[],trims=[None,None,None,None],magThreshold=None,baseid=1,outfile='out.phs'):
     """
     convert Sichuan earthquake administration report into file could be
     recognized by Hypoinverse.
@@ -489,17 +489,17 @@ def sc2phs(file_list=[],lonlats=[-999,-999,-999,-999],magThreshold=-9):
             if file[-4:]==".adj":
                 file_list.append(file)
     file_list.sort()
-
+ 
     lon_filt=True
     lat_filt=True
     mag_filt=True #filt magnitude
     time_filt=True
-    lon_min,lon_max,lat_min,lat_max= lonlats
-    if lon_min==-999:
+    lon_min,lon_max,lat_min,lat_max= trims
+    if lon_min==None:
         lon_filt=False
-    if lat_min==-999:
+    if lat_min==None:
         lat_filt=False
-    if magThreshold==-9:
+    if magThreshold==None:
         mag_filt = False
     #initiate part
     output_content=[]
@@ -509,8 +509,8 @@ def sc2phs(file_list=[],lonlats=[-999,-999,-999,-999],magThreshold=-9):
             for line in f:
                 input_content.append(line.rstrip())
         f.close()
-    event_id=0
-    for line in input_content:
+    evid= baseid-1
+    for line in tqdm(input_content):
         if re.match("\d+",line[3:7]) and line[7]=="/":#then it is a event line
             record_status=True
             e_year = line[3:7]
@@ -526,83 +526,82 @@ def sc2phs(file_list=[],lonlats=[-999,-999,-999,-999],magThreshold=-9):
                 continue
             else:
                 e_lat=float(e_lat)
-                if lat_filt:
+
+                if lat_filt:      
                     if e_lat<lat_min or e_lat>lat_max:
                         record_status=False
-                        continue
-            e_lon=line[34:41]
-            if e_lon=='       ':
-                record_status=False
-                continue
-            else:
+                        continue  
+            e_lon=line[34:41]     
+            if e_lon=='       ':  
+                record_status=False      
+                continue          
+            else:                 
                 e_lon=float(e_lon)
-                if lon_filt:
+                if lon_filt:      
                     if e_lon<lon_min or e_lon>lon_max:
                         record_status=False
-                        continue
-            e_dep=line[43:45]
-            if e_lat=='  ':
-                record_status=False
-                continue
-            else:
+                        continue  
+            e_dep=line[43:45]     
+            if e_lat=='  ':       
+                record_status=False      
+                continue          
+            else:                 
                 e_lat=float(e_lat)
-            e_mag=line[47:50]
-            if e_mag=='   ':
-                record_status=False
-                continue
-            else:
+            e_mag=line[47:50]     
+            if e_mag=='   ':      
+                record_status=False      
+                continue          
+            else:                 
                 e_mag=float(e_mag)
-                if mag_filt:
+                if mag_filt:      
                     if e_mag < magThreshold:
                         record_status=False
-                        continue
-            if record_status==True:
-                if event_id!=0:
-                    output_content.append(format(str(event_id).rjust(72," ")))
-                event_id+=1
-                print("Process event     {0}    ".format(event_id),end='\r')
+                        continue  
+            if record_status==True:      
+                if evid!=baseid-1:   
+                    output_content.append(format(str(evid).rjust(72," ")))
+                evid+=1     
                 part1 = e_year+e_month+e_day+e_hour+e_minute+e_second_int+e_second_left+'0'
                 part2 = str(int(e_lat))+" "+str(int((e_lat-int(e_lat))*60*100)).zfill(4)
                 part3 = str(int(e_lon))+"E"+str(int((e_lon-int(e_lon))*60*100)).zfill(4)
                 part4 = str(int(e_dep)*100).rjust(5," ")+"000"+"L".rjust(84," ")+str(int(e_mag*100)).zfill(3)
                 output_content.append(part1+part2+part3+part4)
-        
-        elif record_status==True:
-            if line[0:2]!="  ":
-                net = line[0:2]
+                                  
+        elif record_status==True: 
+            if line[0:2]!="  ":   
+                net = line[0:2]   
                 sta = re.split(" +",line[3:8])[0]
-            p_type = line[17:19]
+            p_type = line[17:19]  
             p_weight = float(line[25:28])
-            if p_weight >= 0.75:
-                weightCode = 1
-            elif p_weight >= 0.5:
-                weightCode = 2
-            elif p_weight >= 0.0:
-                weightCode = 3
-            p_hour = line[32:34]
+            if p_weight >= 0.75:  
+                weightCode = 1    
+            elif p_weight >= 0.5: 
+                weightCode = 2    
+            elif p_weight >= 0.0: 
+                weightCode = 3    
+            p_hour = line[32:34]  
             p_minute = line[35:37]
             p_seconds = float(line[38:43])
             p_residual=line[45:50]
             if p_residual=="     ":
-                continue
-            else:
-                try:
+                continue                     
+            else:         
+                try:      
                     p_residual = float(p_residual)
-                except:
-                    continue
-            if p_type =="Pg":
+                except:   
+                    continue  
+            if p_type =="Pg": 
                 part1 = sta.ljust(5," ")+net+"  SHZ IPU"+str(weightCode)+e_year+e_month+e_day+p_hour+p_minute+" "+str(int(p_seconds*100)).zfill(4)
                 part2 = str(int(p_residual*100)).rjust(4," ")+"  0    0   0   0"
                 output_content.append(part1+part2)
-            elif p_type == "Sg":
+            elif p_type == "Sg": 
                 part1 = sta.ljust(5," ")+net+"  SHZ     "+e_year+e_month+e_day+p_hour+p_minute+"    0   0  0 "
                 part2 = str(int(p_seconds*100)).zfill(4)+"ES "+str(weightCode)+str(int(p_residual*100)).rjust(4," ")
-                output_content.append(part1+part2)
-    output_content.append(format(str(event_id).rjust(72," ")))
-    with open("out.phs","w") as f:
+                output_content.append(part1+part2) 
+    output_content.append(format(str(evid).rjust(72," ")))
+    with open(outfile,"w") as f:
         for line in output_content:
             f.write(line+"\n")
-    print("  ") #for window output
 
 def getWeightCode(weight,stds):
     """

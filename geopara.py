@@ -1,5 +1,6 @@
 import re
 import os
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib import collections
@@ -41,7 +42,7 @@ class WYpara():
                 _lon,_lat = re.split(" +",line)
                 tmp_arr.append([float(_lon),float(_lat)])
         f.close()
-        self.dict['ml_fault']=tmp_arr
+        self.dict['ml_fault']=np.array(tmp_arr)
         #---------------------------------------------------------
         tmp_dict={}
         count = 0
@@ -73,6 +74,8 @@ class WYpara():
                     _lon,_lat = re.split(" +",line)
                     tmp_dict[count].append([float(_lon),float(_lat)])
         f.close()
+        for key in tmp_dict:
+            tmp_dict[key] = np.array(tmp_dict[key])
         self.dict['Neo_faults'] = tmp_dict
         #---------------------------------------------------------
         tmp_arr = []

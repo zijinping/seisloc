@@ -140,7 +140,7 @@ def get_e_time(tr):
     Then read o_value from the sac head. Return is the event time
     """
     sac_ref_time = read_sac_ref_time(tr)    # In UTCDateTime format
-    o_value = st[0].stats.sac.o 
+    o_value = tr.stats.sac.o 
     event_time = sac_ref_time + o_value     # event origin time
     
     return event_time

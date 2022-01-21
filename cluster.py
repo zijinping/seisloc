@@ -6,7 +6,7 @@ import matplotlib
 from scipy.cluster.hierarchy import average, fcluster
 from scipy.spatial.distance import pdist
 from scipy.cluster.hierarchy import dendrogram, linkage
-from seisloc.dd import load_DD
+from seisloc.dd import loadDD
 import pickle
 from scipy.cluster.hierarchy import fcluster
 
@@ -86,7 +86,7 @@ class Eqcluster():
                                phases=dtcc_phases,
                                minobs = dtcc_minobs,
                                mean_cc_threshold=dtcc_mean_cc_threshold)
-        self.dd_dict,_ = load_DD(loc_file)
+        self.dd_dict,_ = loadDD(loc_file)
 
         self.evids = np.array(list(self.dd_dict.keys())) # all event ids in the reloc file
         self.evids.sort()
