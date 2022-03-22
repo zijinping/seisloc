@@ -368,6 +368,38 @@ def IRIS2fdsn(events):
         f.write("SC\n")
     f.close()
 
+def cata2fdsn(cata,author="Hardy",catalog="SC",
+              cont="SC",contID="01",magtype="ML",
+              magauthor="SC Agency",elocname="SC",out_file='cata.fdsn'):
+    """
+    Outout fdsn format to be read by ZMAP
+    """
+    keys = cata.keys
+    f = open(out_file,'w')
+    f.write("#EventID|Time|Latitude|Longitude|Depth/km|Author|Catalog"
+            +"|Contributor|ContributorID|MagType|Magnitude|MagAuthor|EventLocationName\n")
+    for evid in keys:
+        e_time = cata[evid][4]
+        e_lon = cata[evid][0]
+        e_lat = cata[evid][1]
+        e_dep = cata[evid][2]
+        e_mag = cata[evid][3]
+        magtype = 'ML'
+        f.write('{:0>6d}'.format(evid)+"|")
+        f.write(str(e_time)+"|")
+        f.write(format(e_lat,'6.3f')+"|")
+        f.write(format(e_lon,'7.3f')+"|")
+        f.write(format(e_dep,'6.2f')+"|")
+        f.write(author+"|")
+        f.write(catalog+"|")
+        f.write(cont+"|")
+        f.write(contID+"|")
+        f.write(magtype+'|')                                                                                                                                                                               
+        f.write(format(e_mag+0.01,'5.2f')+"|")
+        f.write(magauthor+"|")
+        f.write(elocname+"\n")
+    f.close()
+
 def ncsn2pha(source_file,target_file):
     input_content=[]
     output_content=[]

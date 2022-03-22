@@ -8,20 +8,22 @@ from obspy.geodetics import gps2dist_azimuth
 from seisloc.dd import loadDD
 from seisloc.geometry import in_rectangle,loc_by_width
 from math import floor,ceil
+from seisloc.statistics import sum_count_Mo,write_sum_count_Mo
+from seisloc.phase_convert import cata2fdsn
 
 
 class Catalog():
     def __init__(self,locfile="hypoDD.reloc"):
         """
         The programme will read in hypoDD relocation file by default. If no hypoDD
-        file provided, it will generate an empty catalog. A user can set up a new 
-        catalog by providing a dict in the form:
+        file provided (locfile=None), it will generate an empty catalog. 
+        A user can set up a new catalog by providing a dict in the form:
             dict[evid] = [lon,lat,dep,mag,UTCDateTime]
         example:
         >>> cata = Catalog(locfile=None)
-        >>> cata.dict = cata_dict  #cata_dict is a dictionary follows above format
-        >>> cata.init()
-        >>> print(cata)
+        >>> cata.dict = cata_dict  # cata_dict is a dictionary follows above format
+        >>> cata.init()            # initiation of the class
+        >>> print(cata)            # basic information will be printed
         """
         if locfile != None:
             if not os.path.exists(locfile):
@@ -30,19 +32,25 @@ class Catalog():
             print("successfully load catalog file: "+locfile)
             self.init()
         else:
-            print("No hypoDD data provided, a empty Catalog created.")
-            print("You can define self.dict[evid] = [lon,lat,dep,mag,UTCDateTime]}")
-            print("Then run: .init() function")
+            print("*** No hypoDD data provided, an empty Catalog created.")
+            print("*** You can define self.dict[evid] = [lon,lat,dep,mag,UTCDateTime]}")
+            print("*** Then run: .init() to initiate the catalog.")
             self.dict = {}
 
     def init(self):
+        """
+        Initiate the catalog
+        """
+        print(">>> Initiate the catalog ... ")
         self.init_keys()
         self.init_locs()
         self.init_relative_seconds()
+        self.sort()
+        print(">>> Initiation complted! ")
 
     def init_keys(self):
         """
-        Turn dict keys into numpy array
+        Build up event ids array
         """
         self.keys = list(self.dict.keys())
         self.keys = np.array(self.keys)
@@ -81,7 +89,7 @@ class Catalog():
 
     def update_dict(self):
         """
-        Update dictionary with keys
+        Update dictionary with new set of keys
         """
         old_keys = list(self.dict.keys())
         for key in old_keys:
@@ -102,7 +110,7 @@ class Catalog():
         
     def crop(self,lonmin,lonmax,latmin,latmax):
         """
-        Trim the dataset with the boundary conditions
+        Trim the dataset with the lon-lat boundary conditions
         """
         idxs = np.where((self.locs[:,0]>=lonmin)&(self.locs[:,0]<=lonmax)&\
                         (self.locs[:,1]>=latmin)&(self.locs[:,1]<=latmax))
@@ -113,7 +121,7 @@ class Catalog():
 
     def magsel(self,mag_low,mag_top=10):
         """
-        Trim the dataset with the magnitude
+        Select the dataset with the magnitude
         """
         idxs = np.where((self.locs[:,3]>=mag_low)&(self.locs[:,3]<=mag_top))
         self.update_keys(idxs)
@@ -150,8 +158,8 @@ class Catalog():
               markersize=6,
               size_ratio=1,
               imp_mag=None,
-              cmap = None,
               ref_time = UTCDateTime(2019,3,1),
+              cmap = None,
               vmin=0,
               vmax=1,
               unit="day",
@@ -159,10 +167,27 @@ class Catalog():
               alonlat=[104,29],
               blonlat=[105,30],
               section_width=0.05,
-              plt_show=True,
               crop=False):
         """
-        Map view plot of earthquakes
+        Map view plot of earthquakes,earthquake denoted default by black circle
+        Parameters:
+        |         xlim: longitude limit, e.g. [104,105]
+        |         ylim: latitude limit, e.g. [29,30]
+        |      figsize: e.g. (5,5)
+        |    edgecolor: earthquake marker(circle) edgecolor
+        |      imp_mag: important magnitude. Magnitude larger than this level will be 
+        |               highlighted
+        |     ref_time: reference time in UTCDateTime used to constrain colormap, if
+        |               no colormap provided, seismicity will plotted by default
+        |         cmap: colormap, check 'matplotlib' for more detail.
+        |    vmin,vmax: the minimum and maximum value for colormap
+        |         unit: "day","hour", or "second" for vmin and vmax
+        |  add_section: if want to add one cross-section, set True
+        |      alonlat: the [lon,lat] of the section start point 'a'
+        |      blonlat: the [lon,lat] of the section end point 'b'
+        |section_width: width of section in degree
+        |         crop: if True, the dataset will cut dataset to leave only events
+                        inside the cross-section
         """
         if figsize != None:
             plt.figure(figsize=figsize)
@@ -248,26 +273,41 @@ class Catalog():
         plt.xlabel("Longitude")
         plt.ylabel("Latitude")
         plt.gca().set_aspect("equal")
-        if plt_show == True:
-            plt.show()
         
     def vplot(self,
               alonlat,
               blonlat,
-              edgecolor='grey',
               width=0.1,
+              edgecolor='grey',
               depmin=0,
               depmax=10,
               size_ratio=1,
               imp_mag=None,
-              cmap=None,
               ref_time = UTCDateTime(2019,3,1),
+              cmap=None,
               vmin=0,
               vmax=1,
               unit="day",
               aspect="auto"):
         """
         Description
+
+        Parameters
+        |   alonlat: the [lon,lat] of the section start point 'a'
+        |   blonlat: the [lon,lat] of the section end point 'b'
+        |     width: width of section in degree
+        |    depmin: minimum depth in km, e.g. 0  km
+        |    depmax: maximum depth in km, e.g. 10 km
+        |   figsize: e.g. (5,5). Default None means auto set by matplotlib
+        | edgecolor: earthquake marker(circle) edgecolor
+        |   imp_mag: important magnitude. Magnitude larger than this level will be 
+        |            highlighted
+        |  ref_time: reference time in UTCDateTime used to constrain colormap, if
+        |            no colormap provided, seismicity will plotted by default
+        |      cmap: colormap, check 'matplotlib' for more detail.
+        | vmin,vmax: the minimum and maximum value for colormap
+        |      unit: "day","hour", or "second" for vmin and vmax
+        |    aspect: aspect ratio setting. Check for plt.gca().set_aspect for detail
         """
         length_m,_,_ = gps2dist_azimuth(alonlat[1],alonlat[0],blonlat[1],blonlat[0])
         length_km = length_m/1000
@@ -275,6 +315,11 @@ class Catalog():
         blon = blonlat[0]; blat = blonlat[1]
         results = in_rectangle(self.locs,alon,alat,blon,blat,width/2)
         jj = np.where(results[:,0]>0)
+        self.vxy=np.zeros((jj[0].shape[-1],2))
+        self.vkeys=np.zeros((jj[0].shape[-1],))
+        self.vkeys = self.keys[jj].ravel()
+        self.vxy[:,0] = results[jj,1]
+        self.vxy[:,1] = self.locs[jj,2]
         if cmap==None:
             plt.scatter(results[jj,1],
                     self.locs[jj,2],
@@ -322,18 +367,15 @@ class Catalog():
         plt.xlabel("distance (km)")
         plt.ylabel("depth (km)")
         plt.gca().set_aspect(aspect)
-        plt.show()
     
-    def MT_plot(self,
-                ref_time=UTCDateTime(2019,3,1),
+    def MTplot(self,
                 xlim=[],
                 ylim=[0,5],
                 unit="day",
+                ref_time=UTCDateTime(2019,3,1),
                 cmap=None,
                 vmin=0,
                 vmax=1,
-                mlow=0,
-                plt_show=True,
                 figsize=(10,5)):
         """
         unit: 'day','hour' or 'second'
@@ -355,16 +397,14 @@ class Catalog():
             diff_seconds = etime - ref_time
             diff_x = diff_seconds/denominator
             if cmap == None:
-                plt.plot([diff_x,diff_x],[mlow,emag],c='grey')
+                plt.plot([diff_x,diff_x],[ylim[0],emag],c='grey')
             else:
-                plt.plot([diff_x,diff_x],[mlow,emag],color=cmap((diff_x-vmin)/(vmax-vmin)))
+                plt.plot([diff_x,diff_x],[ylim[0],emag],color=cmap((diff_x-vmin)/(vmax-vmin)))
             plt.plot([diff_x],emag,'x',c='k')
         plt.ylim(ylim)
         if len(xlim)>0:
             plt.xlim(xlim)
         plt.ylabel("Magnitude")
-        if plt_show:
-            plt.show()
 
     def dep_dist_plot(self,refid=None,
                   refloc = [],
@@ -420,7 +460,6 @@ class Catalog():
                 axs[1].scatter(diff_x,d3dist,s=(emag+2)*5,marker='o',color=cmap((diff_x-vmin)/(vmax-vmin)))
 
         plt.tight_layout()
-        plt.show()
         
     def depth_hist(self,mag_threshold=-9,depthmin=0,depthmax=10,gap=0.5):
         bins=np.arange(depthmin,depthmax,gap)
@@ -435,7 +474,7 @@ class Catalog():
         ax.set_ylim([depthmax,depthmin])
         plt.show()
         
-    def day_hist(self,ref_time=UTCDateTime(2019,1,1,0,0,0),xlim=[],ylim=[],color='b',edgecolor='k',plot_months=True,plt_show=True,figsize=None):
+    def day_hist(self,ref_time=UTCDateTime(2019,1,1,0,0,0),xlim=[],ylim=[],color='b',edgecolor='k',plot_months=True,figsize=None):
         """
         Plot events by day-quantity in a histogram plot.
         Parameters:
@@ -494,10 +533,8 @@ class Catalog():
             plt.ylim(ylim)
         ax1.set_xlabel("Time, days")
         ax1.set_ylabel("event quantity")
-        if plt_show:
-            plt.show()
 
-    def diffusion_plot(self,refid=None,refloc=[],diff_cfs=[],unit="day",xlim=[],ylim=[],plt_show=True):
+    def diffusion_plot(self,refid=None,refloc=[],diff_cfs=[],unit="day",xlim=[],ylim=[]):
         '''
         Parameters:
         refid: reference event id
@@ -556,8 +593,6 @@ class Catalog():
             plt.ylim(ylim)
         else:
             plt.ylim(bottom=0)
-        if plt_show:
-            plt.show()
 
     def animation(self,
                   incre_hour=2,
@@ -712,6 +747,42 @@ class Catalog():
                           zorder=zorder,
                           wspace=None,hspace=None)
         return axs
+    def sum_count_Mo(self,starttime,endtime):
+        self.dict_count_Mo = sum_count_Mo(self,starttime,endtime)
+    def write_sum_count_Mo(self,outfile="sum_count_Mo.txt",mode='day'):
+        write_sum_count_Mo(self.dict_count_Mo,outfile,mode)
+
+    def write_info(self,info_file="lon_lat_dep_mag_relative_days.txt",reftime=None,disp=False):
+        if reftime == None:
+            reftime = self.first_time
+        print("The reference time is: ",reftime)
+        f = open(info_file,'w')
+        for key in self.keys:
+            lon = self.dict[key][0]
+            lat = self.dict[key][1]
+            dep = self.dict[key][2]
+            mag = self.dict[key][3]
+            relative_days = (self.dict[key][4]-reftime)/(24*60*60)
+            _key = format(key,'8d')
+            _lon = format(lon,'11.5f')
+            _lat = format(lat,'10.5f')
+            _dep = format(dep,'7.2f')
+            _mag = format(mag,'4.1f')
+            _relative_days = format(relative_days,'9.3f')
+            line = _key+_lon+_lat+_dep+_mag+_relative_days
+            f.write(line+"\n")
+            if disp == True:
+                print(line)
+        print("Catalog information write into: ",info_file)
+        f.close()
+
+    def cata2fdsn(self,author="Hardy",catalog="SC",
+                  cont="SC",contID="01",magtype="ML",
+                  magauthor="SC Agency",elocname="SC",out_file='cata.fdsn'):
+
+        cata2fdsn(self,author=author,catalog=catalog,                         
+                  cont=cont,contID=contID,magtype=magtype,                       
+                  magauthor=magauthor,elocname=elocname,out_file=out_file)
 
     def copy(self):
         return copy.deepcopy(self)
@@ -733,3 +804,18 @@ class Catalog():
     
     def __getitem__(self,key):
         return self.dict[key]
+
+def hypoinv2Catalog(inv):
+    """
+    Convert Hypoinv class to Catalog class
+    """
+    inv_dict={}
+    for key in inv.dict_evid.keys():
+        inv_dict[key] = inv.dict_evid[key][1:5]
+        _time = inv.dict_evid[key][0]
+        etime = UTCDateTime.strptime(_time,"%Y%m%d%H%M%S%f")
+        inv_dict[key].append(etime)
+    inv_cata = Catalog(locfile=None)
+    inv_cata.dict = inv_dict
+    inv_cata.init()
+    return inv_cata

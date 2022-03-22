@@ -10,12 +10,16 @@ class WYpara():
     '''
     This class reads parameters in "wy.para", which contains parameters for GMT plot.
     '''
-    def __init__(self,para_file="/home/zijinping/Desktop/zijinping/resources/wy.para"):
+    def __init__(self,para_file="/home/zijinping/Desktop/zijinping/resources/wy.para",mode='normal'):
         self.dict={}
         with open(para_file) as f:
             lines = f.readlines()
             for line in lines:
                 line = line.rstrip()
+                if mode=='debug':
+                    print(line)
+                if line[:2]=="#=":                      # after this are functions
+                    break
                 if len(line)==0 or line[0]=='#' or \
                    line[:4]=="gmt ":                    # ignore comment line and gmt set line
                     continue

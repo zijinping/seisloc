@@ -276,7 +276,7 @@ def densityMap(lonlist,latlist,locs,longap,latgap,near=5):
                                 denSums[i+kk,j+ll]+=1
     return denCounts,denSums
 
-def cartesian_rotate(xy,center,deg):
+def cartesian_rotate(xy,center,rotate):
     """
     Degree is positive for anticlockwise
     """
@@ -289,7 +289,7 @@ def cartesian_rotate(xy,center,deg):
         
     xy_ref = xy - center
 
-    rotate_matrix = [[np.cos(deg/180*pi),-np.sin(deg/180*pi)],[np.sin(deg/180*pi),np.cos(deg/180*pi)]]
+    rotate_matrix = [[np.cos(rotate/180*pi),-np.sin(rotate/180*pi)],[np.sin(rotate/180*pi),np.cos(rotate/180*pi)]]
     rotate_matrix = np.array(rotate_matrix)
 
     xy_rotate = np.matmul(rotate_matrix,xy_ref.T).T + center
@@ -375,6 +375,8 @@ def _spherical_rotate(lonlatB,center,rotate):
     # C the rotated point
     # P the north pole
     # O the sphere center
+    
+    epsilon = 0.000001
 
     lonA = np.deg2rad(center[0])
     latA = np.deg2rad(center[1])
@@ -383,13 +385,13 @@ def _spherical_rotate(lonlatB,center,rotate):
     
     rotate = np.deg2rad(rotate)
     
-    if rotate % (2*pi) == 0:
-        lonC = lonB
-        latC = latB
-        return lonC,latC
+    if rotate % (2*pi) == 0:      # no change
+        return lonlatB[0],lonlatB[1]
 
     dist_deg = spherical_dist(center[0],center[1],lonlatB[0],lonlatB[1])
     AOB = np.deg2rad(dist_deg)
+    if AOB<epsilon:
+        return lonlatB[0],lonlatB[1]
 
     dlon = lonB - lonA
     dlat = latB - latA
@@ -399,7 +401,7 @@ def _spherical_rotate(lonlatB,center,rotate):
     
     if dlon>=0:
         tmp = sin(pi/2-latB)*sin(dlon)/sin(AOB)
-        if tmp >=1 and tmp <= 1.00000001:
+        if tmp >=1 and tmp <= 1.0+epsilon:
             tmp = 1
         if dlat >=0:
             PAB = asin(tmp)
@@ -414,13 +416,13 @@ def _spherical_rotate(lonlatB,center,rotate):
 
         # sines law
         tmp = sin(AOC)*sin(PAC)/sin(POC)
-        if tmp >=1 and tmp <= 1.00000001:
+        if tmp >=1 and tmp <= 1.0+epsilon:
             tmp = 1
         APC = asin(tmp)
         lonC = lonA + APC
     else:
         tmp = -sin(pi/2-latB)*sin(dlon)/sin(AOB)
-        if tmp >=1 and tmp <= 1.00000001:
+        if tmp >=1 and tmp <= 1.0+epsilon:
             tmp = 1
         if dlat >=0:
             PAB = asin(tmp)
@@ -435,7 +437,7 @@ def _spherical_rotate(lonlatB,center,rotate):
 
         # sines law
         tmp = sin(AOC)*sin(PAC)/sin(POC)
-        if tmp >=1 and tmp <= 1.00000001:
+        if tmp >=1 and tmp <= 1.0+epsilon:
             tmp = 1
         APC = asin(tmp)
         lonC = lonA - APC
@@ -443,15 +445,68 @@ def _spherical_rotate(lonlatB,center,rotate):
     BOC_deg = spherical_dist(np.rad2deg(lonB),np.rad2deg(latB),np.rad2deg(lonC),np.rad2deg(latC))
     BOC = np.deg2rad(BOC_deg)
     tmp = (cos(BOC)-cos(AOC)*cos(AOB))/(sin(AOC)*sin(AOB))
-    if tmp > 1 and tmp < 1.000001:
+    if tmp > 1 and tmp < 1.0+epsilon:
         tmp = 1
-    if tmp <-1 and tmp > -1.000001:
+    if tmp <-1 and tmp > -1.0-epsilon:
         tmp = -1
     inverse_rotate = acos(tmp)
     
     assert (np.abs(inverse_rotate) - np.abs(rotate)) <=0.01
     distAB = spherical_dist(np.rad2deg(lonA),np.rad2deg(latA),np.rad2deg(lonB),np.rad2deg(latB))
     distAC = spherical_dist(np.rad2deg(lonA),np.rad2deg(latA),np.rad2deg(lonC),np.rad2deg(latC))        
-    assert (distAB-distAC)<=0.000001
+    assert (distAB-distAC)<=epsilon
 
     return np.rad2deg(lonC),np.rad2deg(latC)
+
+def mesh_rotate(x1,y1,center,rotate,method="Cartesian"):
+    ori_shape = x1.shape
+    length = ori_shape[0] * ori_shape[1]
+    tmp_x1 = np.zeros((length,1))
+    tmp_y1 = np.zeros((length,1))
+    tmp_x1[:,0] = x1.ravel()
+    tmp_y1[:,0] = y1.ravel()
+    tmp_x1y1 = np.concatenate((tmp_x1,tmp_y1),axis=1)
+    if method == "Cartesian":
+        rotated_tmp_x1y1 = cartesian_rotate(tmp_x1y1,center=center,rotate=rotate)
+    elif method == "Sphere":
+        rotated_tmp_x1y1 = spherical_rotate(tmp_x1y1,center=center,rotate=rotate)
+    else:
+        raise Exception("Method provided not in ['Cartesian','Sphere']")
+    rotated_x1 = rotated_tmp_x1y1[:,0].reshape(ori_shape[0],ori_shape[1])
+    rotated_y1 = rotated_tmp_x1y1[:,1].reshape(ori_shape[0],ori_shape[1])
+    return rotated_x1,rotated_y1
+
+def fault_vectors(strike,dip,rake,unit='degree'):
+    """
+    rake: slip angle
+    return
+    | n: the unit normal vector of the fault plane
+    | d: the unit vector of the slip direction
+    | b: intermediate vector by n x d
+    | t: sigma3
+    | p: sigma1
+    """
+    if unit == 'degree':
+        strike = np.deg2rad(strike)
+        dip = np.deg2rad(dip)
+        rake = np.deg2rad(rake)
+    elif unit == 'radian':
+        pass
+    else:
+        raise Exception("Wrong unit, should be 'degree' or 'radian'")
+    
+    n = np.zeros(3)
+    n[0] = -1*np.sin(dip)*np.sin(strike)
+    n[1] = -1*np.sin(dip)*np.cos(strike)
+    n[2]=np.cos(dip)
+    
+    d = np.zeros(3)
+    d[0] = np.cos(rake)*np.cos(strike) + np.sin(rake)*np.cos(dip)*np.sin(strike)
+    d[1] = -1*np.cos(rake)*np.sin(strike)+np.sin(rake)*np.cos(dip)*np.cos(strike)
+    d[2] = np.sin(rake)*np.sin(dip)
+    
+    b = np.cross(n,d)
+    t = n+d
+    p = n-d
+    
+    return n,d,b,t,p

@@ -1,5 +1,6 @@
 import os
 import re
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib
@@ -86,7 +87,7 @@ class Eqcluster():
                                phases=dtcc_phases,
                                minobs = dtcc_minobs,
                                mean_cc_threshold=dtcc_mean_cc_threshold)
-        self.dd_dict,_ = loadDD(loc_file)
+        self.dd_dict,_ = load_DD(loc_file)
 
         self.evids = np.array(list(self.dd_dict.keys())) # all event ids in the reloc file
         self.evids.sort()
@@ -241,7 +242,11 @@ class Eqcluster():
             plt.xlim(ylim)
         if len(ylim)>0:
             plt.ylim(ylim)
-        plt.pcolormesh(disp_matrix,cmap='viridis',vmin=self.cc_threshold,vmax=1)
+        
+        colors = ["lightgrey",'lightgrey','blue','red']
+        nodes = [0,self.cc_threshold,self.cc_threshold,1]
+        cmap = LinearSegmentedColormap.from_list("mycmap",list(zip(nodes,colors)))
+        plt.pcolormesh(disp_matrix,cmap=cmap,vmin=0,vmax=1)
         plt.gca().set_aspect('equal')
         plt.xlabel("Event No")
         plt.ylabel("Event No")
@@ -320,3 +325,6 @@ class Eqcluster():
         str1 = f"Eqcluster object with {len(self.evids)} events in hypoDD relocation file\n"
         str2 = f"{len(self.evids)} events constrained by dt.cc file"
         return str1+str2
+    
+    def copy(self):
+        return copy.deepcopy(self)
