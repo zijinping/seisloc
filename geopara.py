@@ -1,6 +1,7 @@
 import re
 import os
 import numpy as np
+from seisloc.geometry import lonlat_by_dist
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib import collections
@@ -106,7 +107,9 @@ class WYpara():
         with open(self.dict['wells'],'r') as f:
             for line in f:
                 line = line.rstrip()
-                _lon,_lat,name,marker = re.split(" +",line)
+                if line[0]=="#":
+                    continue
+                _lon,_lat,name,marker = re.split(" +",line)[:4]
                 tmp_arr.append([float(_lon),float(_lat),name,marker])
         f.close()
         self.dict["wells"]=tmp_arr
@@ -157,15 +160,15 @@ def read_pad_file(pad_file):
     Line start with '#' is comment line.
 
     The first line is basic information line with format:
-    Well_pad_name well_pad_lon well_pad_lon well_branch_scaling_factor(after scaling, the unit is degree)
-    The reason for such format is because that the information is extracted from image by Coreldraw, 
+    Well_pad_name well_pad_lon well_pad_lat
+    The reason for such format is because that the information is extracted from image, 
     It is better to describe the relative position between horizontal well controlling points and platform
-    e.g. W204H37 104.8075537 29.58421817 0.003753575
+    e.g. W204H37 104.8075537 29.58421817
 
-    For each later line, it presents one horizontal well, it is constrained by two points in the format:
-    dx1 dy1 dx2 dy2, ..., dxs,dys # description
-    The longitude and latitude of controlling points is:
-    (well_pad_lon + dx1*scaling_factor, well_pad_lat+dx1*scaling_factor)
+    For each later line, it presents one horizontal well, it is constrained in the format:
+    dx1 dy1 dx2 dy2, ..., dxs,dys # unit in km, with reference to the platform
+    The longitude and latitude of controlling points is transferred by:
+    lon1,lat1 = lonlat_by_dist(platform_lon,plaform_lat, dx_km,dy_km)
 
     The estimated uncertainty is ~3.3%
     """
@@ -176,10 +179,17 @@ def read_pad_file(pad_file):
             line = line.strip()
             if len(line) == 0 or line[0] == "#": # empty line and comment line
                 continue
-            line = re.split("#",line)[0]
+            line = re.split("#+",line)[0]     # remove comment after "#"
             if i == 0:
-                pad_name, _lon,_lat,_sf = re.split(" +",line) # _sf, scaling factor
-                cont.append([pad_name,float(_lon),float(_lat),float(_sf)])
+                tmps = re.split(" +",line)
+                if len(tmps) == 3:
+                    pad_name, _lon,_lat = re.split(" +",line)
+                    cont.append([pad_name,float(_lon),float(_lat)])
+                elif len(tmps) == 4:
+                    pad_name, _lon,_lat,_sf = re.split(" +",line)
+                    cont.append([pad_name,float(_lon),float(_lat),float(_sf)])
+                else:
+                    raise Exception("Wrong header line, should contain 3 or 4 elements")
             else:
                 tmp_list = []
                 for _tmp in re.split(" +",line):
@@ -187,8 +197,6 @@ def read_pad_file(pad_file):
                         continue
                     tmp_list.append(float(_tmp))
                 cont.append(tmp_list)
-#                _dx1,_dy1,_dx2,_dy2 = re.split(" +",line)[:4]
-#                cont.append([float(_dx1),float(_dy1),float(_dx2),float(_dy2)])
             i = i+1
     return cont
 
@@ -198,10 +206,14 @@ def wellpad(pad_file,platform_edgecolor='k',platform_facecolor='white',well_edge
     """
     if not os.path.exists(pad_file):
         print("Pad not in the pads library")
-
+    new_mode = True
     cont = read_pad_file(pad_file)
     collect = []
-    lon = cont[0][1]; lat = cont[0][2]; sf = cont[0][3] # sf: scaling factor
+    if len(cont[0]) == 3:
+        padname = cont[0]; lon = cont[0][1]; lat = cont[0][2];
+    elif len(cont[0]) == 4:
+        padname = cont[0]; lon = cont[0][1]; lat = cont[0][2]; sf =cont[0][3]
+        new_mode = False
 
     for _,args in enumerate(cont[1:]):    # Horizontal wells
         verts = [(lon,lat)]
@@ -212,8 +224,11 @@ def wellpad(pad_file,platform_edgecolor='k',platform_facecolor='white',well_edge
             raise Exception("Error: dx,dy list not in pairs")
         for i in range(int(len(args)/2)):
             dx1 = args[2*i]; dy1 = args[2*i+1]
-            dlon1 = dx1 * sf; lon1 = lon + dlon1;
-            dlat1 = dy1 * sf; lat1 = lat + dlat1;
+            if new_mode:
+                lon1,lat1 = lonlat_by_dist(lon,lat,dx1,dy1)
+            else:
+                dlon1 = dx1 * sf; lon1 = lon + dlon1;
+                dlat1 = dy1 * sf; lat1 = lat + dlat1;
             verts.append((lon1,lat1))
             codes.append(Path.LINETO)
         path = Path(verts,codes)

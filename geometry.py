@@ -15,19 +15,35 @@ def spherical_dist(lon_1,lat_1,lon_2,lat_2):
     return a*180/pi
 
 @jit(nopython=True)
-def in_rectangle(locs,alon,alat,blon,blat,width):
+def in_rectangle(locs,alon,alat,blon,blat,width,mode='normal'):
+    """
+    Judge a list of locations in within a certain distance of line a-b or not
+    mode: "normal" for Cartesian coordinate; "geo" for geographic coordinate
+    """
+    #----------quality control---------------------
+    assert len(locs.shape) == 2
+    assert mode in ["normal","geo"]
+
     results = np.zeros(locs.shape)
-    dlon1 = blon - alon
+    dlon1 = blon - alon                 # start point and end point
     dlat1 = blat - alat
-    rad_alon = radians(alon)
+    mlon1 = (blon+alon)/2
+    mlat1 = (blat+alat)/2
+    rad_alon = radians(alon)            # convert to radians
     rad_alat = radians(alat)
     norm1 = (dlon1**2+dlat1**2)**0.5
+#    if mode == "geo":
+#        norm1 = ((dlon1*np.cos(np.deg2rad((mlat1)))**2+dlat1**2)**0.5
     for i in range(locs.shape[0]):
         ilon = locs[i,0]
         ilat = locs[i,1]
         dlon2 = ilon - alon
         dlat2 = ilat - alat
+        mlon2 = (ilon+alon)/2
+        mlat2 = (ilat+alat)/2
         norm2 = (dlon2**2+dlat2**2)**0.5
+#    if mode == "geo":
+#        norm2 = ((dlon2*np.cos(np.deg2rad((mlat2)))**2+dlat2**2)**0.5
         if norm2 == 0:
             results[i,0]=1
             continue
@@ -89,7 +105,7 @@ def loc_by_width(lon1,lat1,lon2,lat2,width,direction='right'):
       lon2,lat2: longitude and latitude of tip 2
       direction: The side of new points from tip 1 to tip2 direction
     """
-    dlon = lon2 - lon1
+    dlon = (lon2 - lon1) * np.cos(np.deg2rad(lat1))
     dlat = lat2 - lat1
     dist=(dlon**2+dlat**2)**0.5
     
@@ -355,6 +371,9 @@ def sta_rotate(inFile,center,deg):
         f.write("\n")
 
 def spherical_rotate(lonlats,center,rotate):
+    """
+    rotate in degree, postive value for anti-clockwise direction
+    """
     lonlatBs = lonlats.copy()
     if isinstance(lonlatBs,list):
         lonlatBs = np.array(lonlatBs)
@@ -510,3 +529,39 @@ def fault_vectors(strike,dip,rake,unit='degree'):
     p = n-d
     
     return n,d,b,t,p
+
+def lonlat_by_dist(orglon,orglat,delta_x,delta_y,R=6378.1):
+    """
+    Assuming sphere earth, calculate new longitude and latitude 
+    base on delta x and y in kilometers.
+    
+    Parameters
+    |  orglon: Original longitude
+    |  Orglat: Oiginal latitude
+    | delta_x: distance along x direction in km
+    | delta_y: distance along y direction in km
+    """
+    # quality control
+    if orglat <-90 or orglat >90:
+        raise Exception("Latitude should be in [-90,90]")
+    if orglon<-180 or orglon>180:
+        raise Exception("Longitude should be in [-180,180]")
+    
+    delta_lat = delta_y/R/np.pi*180
+    newlat = orglat + delta_lat
+    if newlat < -90:
+        newlat =180 + newlat
+    if newlat >90:
+        newlat = 180-newlat
+        
+    R_ = R*np.cos(np.deg2rad(orglat))
+    delta_lon = delta_x/R_/np.pi*180
+    
+    newlon = orglon + delta_lon
+    
+    if newlon>180:
+        newlon -=180
+    if newlon <=-180:
+        newlon += 180
+
+    return newlon,newlat

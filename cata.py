@@ -167,7 +167,9 @@ class Catalog():
               alonlat=[104,29],
               blonlat=[105,30],
               section_width=0.05,
-              crop=False):
+              crop=False,
+              ax = None,
+              plt_show=True):
         """
         Map view plot of earthquakes,earthquake denoted default by black circle
         Parameters:
@@ -189,8 +191,11 @@ class Catalog():
         |         crop: if True, the dataset will cut dataset to leave only events
                         inside the cross-section
         """
-        if figsize != None:
-            plt.figure(figsize=figsize)
+        if ax != None:     # get current axis
+            plt.sca(ax)
+        else:
+            if figsize != None:
+                plt.figure(figsize=figsize)
 
         if section_width <=0:
             raise Error("Width <= 0")
@@ -198,7 +203,6 @@ class Catalog():
         if add_section==True:
             alon = alonlat[0]; alat = alonlat[1]
             blon = blonlat[0]; blat = blonlat[1]
-            print(alon,alat,blon,blat,section_width)
             results = in_rectangle(self.locs,alon,alat,blon,blat,section_width/2)
             jj = np.where(results[:,0]==1)
             if crop == True:
@@ -224,7 +228,7 @@ class Catalog():
                 times_plot = times_plot/(60*60)
             elif unit=="minute":
                 times_plot = times_plot/60
-            plt.scatter(self.locs[:,0],
+            im = plt.scatter(self.locs[:,0],
                     self.locs[:,1],
                     c=times_plot,
                     s=(self.locs[:,3]+2)*size_ratio,
@@ -233,6 +237,8 @@ class Catalog():
                     vmax = vmax,
                     marker='o',
                     alpha=1)
+            cb = plt.colorbar(im)
+            cb.set_label(unit)
 
         # plot large events
         if imp_mag != None:
@@ -273,6 +279,9 @@ class Catalog():
         plt.xlabel("Longitude")
         plt.ylabel("Latitude")
         plt.gca().set_aspect("equal")
+
+        if plt_show == True:
+            plt.show()
         
     def vplot(self,
               alonlat,
@@ -288,7 +297,8 @@ class Catalog():
               vmin=0,
               vmax=1,
               unit="day",
-              aspect="auto"):
+              aspect="auto",
+              plt_show=True):
         """
         Description
 
@@ -367,6 +377,9 @@ class Catalog():
         plt.xlabel("distance (km)")
         plt.ylabel("depth (km)")
         plt.gca().set_aspect(aspect)
+
+        if plt_show==True:
+            plt.show()
     
     def MTplot(self,
                 xlim=[],
@@ -376,7 +389,8 @@ class Catalog():
                 cmap=None,
                 vmin=0,
                 vmax=1,
-                figsize=(10,5)):
+                figsize=(10,5),
+                plt_show=True):
         """
         unit: 'day','hour' or 'second'
         """
@@ -406,6 +420,9 @@ class Catalog():
             plt.xlim(xlim)
         plt.ylabel("Magnitude")
 
+        if plt_show == True:
+            plt.show()
+
     def dep_dist_plot(self,refid=None,
                   refloc = [],
                   ref_time=UTCDateTime(2019,3,1),
@@ -416,7 +433,8 @@ class Catalog():
                   cmap=None,
                   vmin=0,
                   vmax=1,
-                  figsize=(8,6)):
+                  figsize=(8,6),
+                  plt_show=True):
         fig,axs = plt.subplots(2,1,figsize=figsize)
         if unit == "day":
             denominator = (24*60*60)
@@ -458,8 +476,10 @@ class Catalog():
             else:
                 axs[0].scatter(diff_x,edep,s=(emag+2)*5,marker='o',color=cmap((diff_x-vmin)/(vmax-vmin)))
                 axs[1].scatter(diff_x,d3dist,s=(emag+2)*5,marker='o',color=cmap((diff_x-vmin)/(vmax-vmin)))
-
+    
         plt.tight_layout()
+        if plt_show == True:
+            plt.show()
         
     def depth_hist(self,mag_threshold=-9,depthmin=0,depthmax=10,gap=0.5):
         bins=np.arange(depthmin,depthmax,gap)
@@ -472,9 +492,17 @@ class Catalog():
         hist,bins = np.histogram(self.locs[:,2],bins=bins)
         ax.barh(bins[:-1]+gap/2,hist,height=gap,color='gray',edgecolor='k')
         ax.set_ylim([depthmax,depthmin])
-        plt.show()
+        return ax
         
-    def day_hist(self,ref_time=UTCDateTime(2019,1,1,0,0,0),xlim=[],ylim=[],color='b',edgecolor='k',plot_months=True,figsize=None):
+    def day_hist(self,
+                 ref_time=UTCDateTime(2019,1,1,0,0,0),
+                 xlim=[],
+                 ylim=[],
+                 color='b',
+                 edgecolor='k',
+                 plot_months=True,
+                 figsize=None,
+                 plt_show = True):
         """
         Plot events by day-quantity in a histogram plot.
         Parameters:
@@ -534,7 +562,10 @@ class Catalog():
         ax1.set_xlabel("Time, days")
         ax1.set_ylabel("event quantity")
 
-    def diffusion_plot(self,refid=None,refloc=[],diff_cfs=[],unit="day",xlim=[],ylim=[]):
+        if plt_show == True:
+            plt_show()
+
+    def diffusion_plot(self,refid=None,refloc=[],diff_cfs=[],unit="day",xlim=[],ylim=[],plt_show=True):
         '''
         Parameters:
         refid: reference event id
@@ -593,6 +624,8 @@ class Catalog():
             plt.ylim(ylim)
         else:
             plt.ylim(bottom=0)
+        if plt_show == True:
+            plt_show()
 
     def animation(self,
                   incre_hour=2,

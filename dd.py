@@ -60,7 +60,7 @@ def load_CEDC(catalog="/home/zijinping/Dropbox/resources/catalog/CEDC/20090101_2
     return catalog_dict
 
 
-def event_sel(evid_list=[],event_dat="event.dat",event_sel="event.sel"):
+def dd_event_sel(evid_list=[],event_dat="event.dat",event_sel="event.sel"):
     '''
     select events in the "event.dat" file and output them into
     the "event.sel" file by the event ID list provided
