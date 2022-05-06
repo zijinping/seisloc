@@ -10,6 +10,7 @@ from seisloc.geometry import in_rectangle,loc_by_width
 from math import floor,ceil
 from seisloc.statistics import sum_count_Mo,write_sum_count_Mo
 from seisloc.phase_convert import cata2fdsn
+import logging
 
 
 class Catalog():
@@ -158,7 +159,7 @@ class Catalog():
               markersize=6,
               size_ratio=1,
               imp_mag=None,
-              ref_time = UTCDateTime(2019,3,1),
+              reftime = None,
               cmap = None,
               vmin=0,
               vmax=1,
@@ -179,7 +180,7 @@ class Catalog():
         |    edgecolor: earthquake marker(circle) edgecolor
         |      imp_mag: important magnitude. Magnitude larger than this level will be 
         |               highlighted
-        |     ref_time: reference time in UTCDateTime used to constrain colormap, if
+        |     reftime: reference time in UTCDateTime used to constrain colormap, if
         |               no colormap provided, seismicity will plotted by default
         |         cmap: colormap, check 'matplotlib' for more detail.
         |    vmin,vmax: the minimum and maximum value for colormap
@@ -191,12 +192,14 @@ class Catalog():
         |         crop: if True, the dataset will cut dataset to leave only events
                         inside the cross-section
         """
+        #---------------- initiation ----------------------------------
         if ax != None:     # get current axis
             plt.sca(ax)
         else:
             if figsize != None:
                 plt.figure(figsize=figsize)
-
+        if reftime == None:
+            reftime = self.first_time + np.min(self.relative_seconds)
         if section_width <=0:
             raise Error("Width <= 0")
         # plot all events
@@ -220,7 +223,7 @@ class Catalog():
                     marker='o',
                     alpha=1)
         else:
-            shift_seconds = ref_time - self.first_time
+            shift_seconds = reftime - self.first_time
             times_plot = self.relative_seconds-shift_seconds
             if unit=="day":
                 times_plot = times_plot/(24*60*60)
@@ -292,7 +295,7 @@ class Catalog():
               depmax=10,
               size_ratio=1,
               imp_mag=None,
-              ref_time = UTCDateTime(2019,3,1),
+              reftime = UTCDateTime(2019,3,1),
               cmap=None,
               vmin=0,
               vmax=1,
@@ -312,7 +315,7 @@ class Catalog():
         | edgecolor: earthquake marker(circle) edgecolor
         |   imp_mag: important magnitude. Magnitude larger than this level will be 
         |            highlighted
-        |  ref_time: reference time in UTCDateTime used to constrain colormap, if
+        |  reftime: reference time in UTCDateTime used to constrain colormap, if
         |            no colormap provided, seismicity will plotted by default
         |      cmap: colormap, check 'matplotlib' for more detail.
         | vmin,vmax: the minimum and maximum value for colormap
@@ -338,7 +341,7 @@ class Catalog():
                     facecolors='none',
                     s=(self.locs[jj,3]+2)*size_ratio*5)
         else:
-            shift_seconds = ref_time - self.first_time
+            shift_seconds = reftime - self.first_time
             times_plot = self.relative_seconds[jj]-shift_seconds
             if unit=="day":
                 times_plot = times_plot/(24*60*60)
@@ -385,7 +388,7 @@ class Catalog():
                 xlim=[],
                 ylim=[0,5],
                 unit="day",
-                ref_time=UTCDateTime(2019,3,1),
+                reftime=None,
                 cmap=None,
                 vmin=0,
                 vmax=1,
@@ -394,6 +397,7 @@ class Catalog():
         """
         unit: 'day','hour' or 'second'
         """
+        # ----------------- initiate -----------------------------------
         fig,ax = plt.subplots(1,figsize=figsize)
         if unit == "day":
             denominator = (24*60*60)
@@ -404,11 +408,26 @@ class Catalog():
         elif unit == "second":
             denominator = 1
             plt.xlabel("Time (second)")
-        
+        if reftime == None:
+            reftime = self.first_time + np.min(self.relative_seconds)
+        print("Reference time is: ", reftime)
+        if len(xlim) == 0:
+            tbtime = self.first_time + np.min(self.relative_seconds)
+            tetime = self.first_time + np.max(self.relative_seconds)
+        if len(xlim) == 1:
+            tbtime = reftime+xlim[0]*denominator
+            tetime = self.first_time + np.max(self.relative_seconds)
+        if len(xlim) == 2:
+            tbtime = reftime+xlim[0]*denominator
+            tetime = reftime+xlim[1]*denominator
+
+        #----------------- processing ---------------------------------
         for key in self.keys:
             etime = self.dict[key][4]
+            if etime< tbtime or etime>tetime:
+                continue
             emag = self.dict[key][3]
-            diff_seconds = etime - ref_time
+            diff_seconds = etime - reftime
             diff_x = diff_seconds/denominator
             if cmap == None:
                 plt.plot([diff_x,diff_x],[ylim[0],emag],c='grey')
@@ -418,6 +437,8 @@ class Catalog():
         plt.ylim(ylim)
         if len(xlim)>0:
             plt.xlim(xlim)
+        else:
+            plt.xlim(left = (tbtime-reftime)/denominator-0.1,right = (tetime-reftime)/denominator+0.1)
         plt.ylabel("Magnitude")
 
         if plt_show == True:
@@ -425,7 +446,7 @@ class Catalog():
 
     def dep_dist_plot(self,refid=None,
                   refloc = [],
-                  ref_time=UTCDateTime(2019,3,1),
+                  reftime=None,
                   xlim=[],
                   deplim=[100,-4],
                   distlim=[],
@@ -435,6 +456,7 @@ class Catalog():
                   vmax=1,
                   figsize=(8,6),
                   plt_show=True):
+        #------------- initiation --------------------
         fig,axs = plt.subplots(2,1,figsize=figsize)
         if unit == "day":
             denominator = (24*60*60)
@@ -461,13 +483,16 @@ class Catalog():
             refdep = self.dict[refid][2]
         if len(refloc)>0:
             reflon,reflat,refdep = refloc
+        if reftime == None:
+            reftime = self.first_time + np.min(self.relative_seconds)
+
         for evid in self.keys:
             etime =self.dict[evid][4]
             elon = self.dict[evid][0]
             elat = self.dict[evid][1]
             edep = self.dict[evid][2]
             emag = self.dict[evid][3]
-            diff_x = (etime-ref_time)/denominator
+            diff_x = (etime-reftime)/denominator
             dist,_,_ = gps2dist_azimuth(elat,elon,reflat,reflon)
             d3dist = np.sqrt((dist/1000)**2+(edep-refdep)**2)
             if cmap==None:
@@ -495,7 +520,7 @@ class Catalog():
         return ax
         
     def day_hist(self,
-                 ref_time=UTCDateTime(2019,1,1,0,0,0),
+                 reftime=UTCDateTime(2019,1,1,0,0,0),
                  xlim=[],
                  ylim=[],
                  color='b',
@@ -506,13 +531,13 @@ class Catalog():
         """
         Plot events by day-quantity in a histogram plot.
         Parameters:
-            -ref_time: Reference time for plot
+            -reftime: Reference time for plot
         """
         ref_list = []
         time_list = []
         for key in self.dict.keys():
             _,_,_,_,etime = self.dict[key]
-            ref_list.append((etime-ref_time)/(24*60*60))
+            ref_list.append((etime-reftime)/(24*60*60))
 
         min_day=floor(min(ref_list))
         max_day=ceil(max(ref_list))
@@ -527,9 +552,9 @@ class Catalog():
         # The top x-axis marks year and month in YYYYMM
         tick_list_1 = [] # Store the position number
         tick_list_2 = [] # Store the tick text
-        ref_year = ref_time.year
-        ref_month = ref_time.month
-        ref_day = ref_time.day
+        ref_year = reftime.year
+        ref_month = reftime.month
+        ref_day = reftime.day
         if ref_day == 1:
             tick_list_1.append(0)
             tick_list_2.append(str(ref_year)+str(ref_month).zfill(2))
@@ -541,7 +566,7 @@ class Catalog():
             tmp_year = loop_time.year
             tmp_month = loop_time.month
             loop_time = UTCDateTime(tmp_year,tmp_month,1)
-            diff_days = (loop_time - ref_time)/(24*60*60)
+            diff_days = (loop_time - reftime)/(24*60*60)
             if diff_days > (max_day):
                 status=False
             else:
@@ -653,13 +678,14 @@ class Catalog():
             ylim = [np.min(self.locs[:,1]),np.max(self.locs[:,1])]    
         min_time = self.first_time+np.min(self.relative_seconds)
         max_time = self.first_time+np.max(self.relative_seconds)
+        
         if mb_time == None:
             mb_time = min_time
         if me_time == None:
             me_time = max_time
         print("Movie start time is: ",mb_time)
         print("  Movie end time is: ",me_time)
-
+        #---------- cmap -------------------------
         if vmin == None:
             vmin = 0
         if vmax == None:
@@ -668,7 +694,7 @@ class Catalog():
         inc_second = incre_hour*60*60 # Time increment
         loop_time = mb_time
         count = 1
-        ref_time = mb_time
+        reftime = mb_time
         while loop_time <= me_time:
             fig = plt.figure(1,figsize=(8,8))
             ax1 = fig.add_subplot(111)
@@ -706,13 +732,13 @@ class Catalog():
                 e_time = self.first_time + second
                 if e_time<(loop_time+inc_second/2) and e_time>mb_time:
                     eve_arr.append(self.locs[i,:4])
-                    rela_days.append((e_time-ref_time)/(24*60*60))
+                    rela_days.append((e_time-reftime)/(24*60*60))
             eve_arr = np.array(eve_arr)
             rela_days = np.array(rela_days)
 
             if len(eve_arr)>0:
                 if cmap != None:
-                        s_eve=ax1.scatter(eve_arr[:,0],
+                    s_eve=ax1.scatter(eve_arr[:,0],
                                           eve_arr[:,1],
                                           s=(eve_arr[:,3]+2)*5,
                                           c=rela_days,
@@ -721,7 +747,7 @@ class Catalog():
                                           vmax=vmax,
                                           label="Events")
                 else:
-                        s_eve=ax1.scatter(eve_arr[:,0],
+                    s_eve=ax1.scatter(eve_arr[:,0],
                                           eve_arr[:,1],
                                           s=(eve_arr[:,3]+2)*5,
                                           c='k',
@@ -755,7 +781,7 @@ class Catalog():
 
         axs = intervals_plot(xys=self.locs[:,:2],
                 rela_secs=self.relative_seconds,
-                ref_time=self.first_time,
+                reftime=self.first_time,
                 interval=interval,method=method,
                 xlim=xlim,ylim=ylim,
                 columns=columns,subplotsize=subplotsize,

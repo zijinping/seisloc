@@ -59,7 +59,8 @@ def segmented_plot(xys,base_time,secs,tick_secs,
     fig,axs = plt.subplots(rows,columns,
                            sharex=True,sharey=True,
                           figsize=(columns*subplotsize[0],rows*subplotsize[1]))
-    axs = axs.ravel()
+    if len(axs)>1:
+        axs = axs.ravel()
 
     # title format
     if unit == 'year':
@@ -110,7 +111,7 @@ def segmented_plot(xys,base_time,secs,tick_secs,
 
 def intervals_plot(xys,
                 rela_secs,
-                ref_time,
+                reftime,
                 interval=1,
                 method='month',
                 xlim=[],
@@ -137,11 +138,11 @@ def intervals_plot(xys,
         xlim = [np.min(xys[:,0]),np.max(xys[:,0])]
     if ylim == []:
         ylim = [np.min(xys[:,1]),np.max(xys[:,1])]
-    min_time = ref_time + np.min(secs)
-    max_time = ref_time + np.max(secs)
+    min_time = reftime + np.min(secs)
+    max_time = reftime + np.max(secs)
     base_time, tick_secs = time_interval_ticks(min_time,max_time,interval=interval,unit=method)
     
-    diff_time = ref_time - base_time
+    diff_time = reftime - base_time
     secs -= diff_time
     
     axs = segmented_plot(xys,base_time,secs,tick_secs,

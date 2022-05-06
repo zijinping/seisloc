@@ -4,6 +4,7 @@ import numpy as np
 import os
 import re
 import matplotlib.pyplot as plt
+from seisloc.utils import read_line_values
 
 def gen_abs_file(arcfile,outfile="Input_Files/absolute.dat",pweight=1,sweight=0.5):
     pweight = 1
@@ -269,3 +270,139 @@ def log_info_plot(log_info_dict):
     axs[2,1].legend()
     plt.tight_layout()
     plt.show()
+
+class Tomo_vel():
+    def __init__(self,velfile="tomoDD.vel"):
+        with open(velfile,'r') as f:
+            self.lines = f.readlines()
+        #---------- grids setup -------------------
+        self.xs = read_line_values(self.lines[9])
+        self.xs = np.array(self.xs)
+        self.nx = len(self.xs)
+        self.ys = read_line_values(self.lines[12])
+        self.ys = np.array(self.ys)
+        self.ny = len(self.ys)
+        self.zs = read_line_values(self.lines[15])
+        self.zs = np.array(self.zs)
+        self.nz = len(self.zs)
+        #---------- load input velocity -----------
+        inp_vel_bidx = 21
+        inp_vel_gap = self.ny + 2
+        self.inp_vps = np.zeros((self.nx,self.ny,self.nz))
+        loop_idx = inp_vel_bidx
+        for k in range(self.nz):
+            for j in range(self.ny):
+                print(self.lines[loop_idx])
+                self.inp_vps[:,j,k] = read_line_values(self.lines[loop_idx])
+                loop_idx += 1
+            loop_idx += 2
+        #---------- load Vp/Vs ---------------------
+        self.inp_vpvs = np.zeros((self.nx,self.ny,self.nz))
+        for k in range(self.nz):
+            for j in range(self.ny):
+                self.inp_vpvs[:,j,k] = read_line_values(self.lines[loop_idx])
+                loop_idx += 1
+            loop_idx += 2        
+        #---------- load Vs ---------------------
+        self.inp_vss = np.zeros((self.nx,self.ny,self.nz))
+        for k in range(self.nz):
+            for j in range(self.ny):
+                self.inp_vss[:,j,k] = read_line_values(self.lines[loop_idx])
+                loop_idx += 1
+            loop_idx += 2           
+        inp_vel_eidx = loop_idx   # end index of the input velocity
+        #========== load iteration velocity ==============
+        self.iters = {}
+        iter_pidxs = []
+        iter_ids = []
+        loop_idx = inp_vel_eidx
+        for line in self.lines[loop_idx:]:
+            if line[:29]==" P-wave velocity at iteration":
+                _iter_id = re.split(" +",line)[-1]
+                iter_id = int(_iter_id)
+                iter_ids.append(iter_id)
+                iter_pidxs.append(loop_idx)
+                self.iters[iter_id] = {}
+                self.load_iter_data(loop_idx,iter_id)
+            loop_idx += 1
+
+    def load_iter_data(self,loop_pidx,iter_id):
+        self.iters[iter_id]["vp"] = np.zeros((self.nx,self.ny,self.nz))
+        loop_idx = loop_pidx+1
+        #-------- read iter vp ----------------------
+        for k in range(self.nz):
+            for j in range(self.ny):
+                self.iters[iter_id]["vp"][:,j,k] = read_line_values(self.lines[loop_idx])
+                loop_idx+=1
+        #-------- read iter vs -----------------------
+        self.iters[iter_id]["vs"] = np.zeros((self.nx,self.ny,self.nz))
+        loop_idx += 2
+        for k in range(self.nz):
+            for j in range(self.ny):
+                self.iters[iter_id]["vs"][:,j,k] = read_line_values(self.lines[loop_idx])
+                loop_idx+=1
+        #-------- read iter DWS_P -----------------------
+        self.iters[iter_id]["DWS_P"] = np.zeros((self.nx,self.ny,self.nz))
+        loop_idx += 1
+        for k in range(self.nz):
+            for j in range(self.ny):
+                self.iters[iter_id]["DWS_P"][:,j,k] = read_line_values(self.lines[loop_idx])
+                loop_idx+=1
+        #-------- read iter DWS_S -----------------------
+        self.iters[iter_id]["DWS_S"] = np.zeros((self.nx,self.ny,self.nz))
+        loop_idx += 1
+        for k in range(self.nz):
+            for j in range(self.ny):
+                self.iters[iter_id]["DWS_S"][:,j,k] = read_line_values(self.lines[loop_idx])
+                loop_idx+=1                
+                
+    def plot_vel(self,iter_id,sub_figsize=(3,4)):
+        fig,axs = plt.subplots(self.nz-2,4,figsize=(4*sub_figsize[1],(self.nz-2)*sub_figsize[0]),
+                               sharex=True,sharey=True)
+        for k in range(self.nz-2):
+            #------------------Vp-------------------------------
+            xxs,yys = np.meshgrid(self.xs[1:-1],self.ys[1:-1])
+            psm = axs[k,0].pcolormesh(xxs,yys,self.iters[iter_id]["vp"][1:-1,1:-1,k+1].T,cmap="jet_r")
+            axs[k,0].set_title(f"Z = {self.zs[k+1]} km; init Vp={self.inp_vps[0,0,k+1]}")
+            cb = plt.colorbar(psm,ax=axs[k,0])
+            delta_vps = self.iters[iter_id]["vp"][1:-1,1:-1,k+1]-self.inp_vps[1:-1,1:-1,k+1]
+            kks = np.where(delta_vps!=0)
+            delta_mean = np.mean(delta_vps[kks])
+            psm = axs[k,1].pcolormesh(xxs,yys,delta_vps.T,
+                               cmap = "jet_r",vmin=-0.5,vmax=0.5)
+            cb = plt.colorbar(psm,ax=axs[k,1])
+            axs[k,1].set_title(f"Mean $\Delta$ Vp={format(delta_mean,'.3f')}")
+            #------------------Vs-------------------------------
+            psm = axs[k,2].pcolormesh(xxs,yys,self.iters[iter_id]["vs"][1:-1,1:-1,k+1].T,cmap="jet_r")
+            axs[k,2].set_title(f"Vs; init Vp={self.inp_vss[0,0,k+1]}")
+            cb = plt.colorbar(psm,ax=axs[k,2])
+            delta_vss = self.iters[iter_id]["vs"][1:-1,1:-1,k+1]-self.inp_vss[1:-1,1:-1,k+1]
+            kks = np.where(delta_vss!=0)
+            delta_mean = np.mean(delta_vss[kks])
+            psm = axs[k,3].pcolormesh(xxs,yys,delta_vss.T,
+                               cmap = "jet_r",vmin=-0.35,vmax=0.35)
+            cb = plt.colorbar(psm,ax=axs[k,3])
+            axs[k,3].set_title(f"$\Delta$ Vs={format(delta_mean,'.3f')}")
+            
+    def plot_DWS(self,iter_id,sub_figsize=(3,4)):
+        fig,axs = plt.subplots(self.nz-2,2,figsize=(2*sub_figsize[1],(self.nz-2)*sub_figsize[0]),
+                               sharex=True,sharey=True)
+        for k in range(self.nz-2):
+            #------------------Vp-------------------------------
+            xxs,yys = np.meshgrid(self.xs[1:-1],self.ys[1:-1])
+            psm = axs[k,0].pcolormesh(xxs,yys,self.iters[iter_id]["DWS_P"][1:-1,1:-1,k+1].T)
+            axs[k,0].set_title(f"Z={self.zs[k+1]} km DWS_P")
+            cb = plt.colorbar(psm,ax=axs[k,0])
+            psm = axs[k,1].pcolormesh(xxs,yys,self.iters[iter_id]["DWS_S"][1:-1,1:-1,k+1].T)
+            axs[k,1].set_title(f"DWS_S")
+            cb = plt.colorbar(psm,ax=axs[k,1])
+            axs[k,1].set_title(f"DWS_S")
+
+    def __repr__(self):
+        print("Iteration list: ",end=" ")
+        for key in self.iters.keys():
+            print(key,end=" ")
+        _lons = f"nx: {len(self.xs)}; use *.xs to show the longitude nodes\n"
+        _lats = f"ny: {len(self.ys)}; use *.ys to show the latitude nodes\n"
+        _deps = f"nz: {len(self.zs)}; use *.zs to show the depth nodes\n"
+        return _lons+_lats+_deps

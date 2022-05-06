@@ -151,6 +151,7 @@ def load_y2000(y2000_file,print_line=False):
         f_para = line[0:2]     # first two characters as first parameter(f_para)
         if re.match("\d+",f_para):    # event line
             event_count += 1
+            netstas = []
             _yr=line[0:4];_mo=line[4:6];_day=line[6:8]
             _hr=line[8:10];_minute=line[10:12];
             yr = int(_yr); mo = int(_mo); day=int(_day); hr=int(_hr);minute=int(_minute);
@@ -192,6 +193,7 @@ def load_y2000(y2000_file,print_line=False):
             phs_dict[str_time] = {}
             phs_dict[str_time]["eve_loc"] = [evlo,evla,evdp]
             phs_dict[str_time]["phase"] = []
+            phs_dict[str_time]['nsta'] = 0
 #            try:
 #                evid = int(line[136:146])
 #                phs_dict[str_time]["evid"] = evid
@@ -202,6 +204,9 @@ def load_y2000(y2000_file,print_line=False):
         elif re.match("[A-Z]+",f_para) and f_para != "  ": # phase line
             net = line[5:7]
             sta = re.split(" +",line[0:5])[0]
+            if net+sta not in netstas:
+                netstas.append(net+sta)
+                phs_dict[str_time]['nsta'] += 1
             year = int(line[17:21])
             month = int(line[21:23])
             day = int(line[23:25])

@@ -438,6 +438,7 @@ def bdy2pts(xmin,xmax,ymin,ymax):
     points.append([xmax,ymin])
     points.append([xmin,ymin])
     return np.array(points)
+
 def matrix_show(*args,**kwargs):
     """
     Show matrix values in grids shape
@@ -609,3 +610,15 @@ def layer2linear_vel(inp_depths,inp_vels,linear_nodes):
         avg_vels.append(avg_vel)
         
     return avg_vels
+
+def read_line_values(line,vtype="float"):
+    values = []
+    _values = line.strip().split()
+    for _value in _values:
+        if vtype == "float":
+            values.append(float(_value))
+        elif vtype == "int":
+            values.append(int(_value))
+        else:
+            raise Exception("Unrecognized value type: ",vtype)
+    return values

@@ -597,7 +597,8 @@ def sc2phs(file_list=[],trims=[None,None,None,None],magThreshold=None,baseid=1,o
                 part2 = str(int(e_lat))+" "+str(int((e_lat-int(e_lat))*60*100)).zfill(4)
                 part3 = str(int(e_lon))+"E"+str(int((e_lon-int(e_lon))*60*100)).zfill(4)
                 part4 = str(int(e_dep)*100).rjust(5," ")+"000"+"L".rjust(84," ")+str(int(e_mag*100)).zfill(3)
-                output_content.append(part1+part2+part3+part4)
+                part5 = " ".rjust(21," ")+str(int(e_mag*100)).zfill(3)
+                output_content.append(part1+part2+part3+part4+part5)
                                   
         elif record_status==True: 
             if line[0:2]!="  ":   
