@@ -112,43 +112,39 @@ def load_xyz(locfile="tomoDD.reloc"):
     x = lon; y=lat; z=mdat[:,3]
     return x,y,z
 
-def load_MOD(MODfile):
-    MOD = []
-    with open(MODfile,'r') as f:
-        for line in f:
-            MOD.append(line.rstrip())
-    _,_nx,_ny,_nz=MOD[0].split()
-    global nx,ny,nz
-    nx = int(_nx); ny = int(_ny); nz = int(_nz);
-    X = np.zeros((1,nx))
-    _X = MOD[1].split() # Second line is x list 
-    for i in range(len(_X)):
-        X[0,i]=float(_X[i])
-    Y = np.zeros((1,ny))
-    _Y = MOD[2].split() # Third line is y list
-    for i in range(len(_Y)):
-        Y[0,i]=float(_Y[i])
-    Z = np.zeros((1,nz))
-    _Z = MOD[3].split() # Forth line is z list
-    for i in range(len(_Z)):
-        Z[0,i] = float(_Z[i])
-    VpVs = np.loadtxt(MODfile,skiprows=4)    
-    VEL_P = np.zeros((nx,ny,nz))
-    VEL_S = np.zeros((nx,ny,nz))  
-    
-    for k in range(nz):
-        for j in range(ny):
-            for i in range(nx):
-                VEL_P[i,j,k] = VpVs[k*ny+j,i]
-                VEL_S[i,j,k] = VpVs[k*ny+j,i]/VpVs[nz*ny+k*ny+j,i]
-    return X,Y,Z, VEL_P,VEL_S
-
 class MOD():
     def __init__(self,MODfile="MOD"):
-        self.X,self.Y,self.Z,self.Vp, self.Vs = load_MOD(MODfile)
-        self.nx = self.X.shape[-1]
-        self.ny = self.Y.shape[-1]
-        self.nz = self.Z.shape[-1]
+        self.load_MOD(MODfile)
+        
+    def load_MOD(self,MODfile):
+        self.lines = []
+        with open(MODfile,'r') as f:
+            for line in f:
+                self.lines.append(line.rstrip())
+        self._bld,_nx,_ny,_nz=self.lines[0].split()
+        self.bld = float(self._bld)
+        self.nx = int(_nx); self.ny = int(_ny); self.nz = int(_nz);
+        self.X = np.zeros((1,self.nx))
+        _X = self.lines[1].split() # Second line is x list 
+        for i in range(len(_X)):
+            self.X[0,i]=float(_X[i])
+        self.Y = np.zeros((1,self.ny))
+        _Y = self.lines[2].split() # Third line is y list
+        for i in range(len(_Y)):
+            self.Y[0,i]=float(_Y[i])
+        self.Z = np.zeros((1,self.nz))
+        _Z = self.lines[3].split() # Forth line is z list
+        for i in range(len(_Z)):
+            self.Z[0,i] = float(_Z[i])
+        VpVs = np.loadtxt(MODfile,skiprows=4)    
+        self.Vp = np.zeros((self.nx,self.ny,self.nz))
+        self.Vs = np.zeros((self.nx,self.ny,self.nz))  
+
+        for k in range(self.nz):
+            for j in range(self.ny):
+                for i in range(self.nx):
+                    self.Vp[i,j,k] = VpVs[k*self.ny+j,i]
+                    self.Vs[i,j,k] = VpVs[k*self.ny+j,i]/VpVs[self.nz*self.ny+k*self.ny+j,i]
 
 def load_tomo_vel(nx,ny,nz,Vpfile="Vp_model.dat",Vsfile="Vs_model.dat"):
     Vp = np.loadtxt(Vpfile)
@@ -165,10 +161,10 @@ def load_tomo_vel(nx,ny,nz,Vpfile="Vp_model.dat",Vsfile="Vs_model.dat"):
     
     return VEL_P,VEL_S,POS_RATIO
 
-def prep_D3MOD(MODfile="MOD",Vpfile="Vp_model.dat",Vsfile="Vs_model.dat"):
+def prep_D3MOD(MODfile="MOD",Vpfile="Output_Files/Vp_model.dat",Vsfile="Output_Files/Vs_model.dat"):
     assert os.path.exists("D3MOD") == False
     mod = MOD(MODfile=MODfile)
-    VEL_P,VEL_S,POS_RATIO = load_velocity(mod.nx,mod.ny,mod.nz,Vpfile=Vpfile,Vsfile=Vsfile)
+    VEL_P,VEL_S,POS_RATIO = load_tomo_vel(mod.nx,mod.ny,mod.nz,Vpfile=Vpfile,Vsfile=Vsfile)
     with open("D3MOD",'w') as f:
         for line in mod.lines[:4]:
             f.write(line+"\n")

@@ -127,85 +127,66 @@ def data_scc(tmplt_data,st_data,ncom):
         j=j+1
     return ccmax,aamax,i0,cc_list
 
-def eve_wf_bp(freqmin,freqmax,
-              src_folder="eve_wf",
-              tar_folder="eve_wf_bp",
-              taper_percentage=0.05,
-              zerophase=True):
+def gen_scc_input(src_root,tar_root,freqmin,freqmax):
     """
-      bandpass event waveform
-      src_folder: The source waveform folder
-      tar_folder: The target waveform folder
+    Prepare the sliding window cross-correlation input files
+    Parameters:
+      src_root: The source data folder
+      tar_root: The target output folder
     """
+    if not os.path.exists(tar_root):
+        os.mkdir(tar_root)
+    arr_folder = os.path.join(tar_root,'arr_files')
     try:
-        os.mkdir(tar_folder)
+        shutil.rmtree(arr_folder)
     except:
-        raise Exception("target folder existed!")
-    _days = os.listdir(src_folder)
+        pass
+    os.mkdir(arr_folder)
+    try:
+        shutil.rmtree(os.path.join(tar_root,'eve_wf_bp'))
+    except:
+        pass
+    os.mkdir(os.path.join(tar_root,'eve_wf_bp'))
+    _days = os.listdir(src_root)
     _days.sort()
     for _day in _days:
-        os.mkdir(os.path.join(tar_folder,_day))
-        _eves = os.listdir(os.path.join(src_folder,_day))
+        os.mkdir(os.path.join(tar_root,'eve_wf_bp',_day))
+        _eves = os.listdir(os.path.join(src_root,_day))
         _eves.sort()
         for _eve in _eves:
-            _eve_folder = os.path.join(tar_folder,_day,_eve)
+            _eve_folder = os.path.join(tar_root,'eve_wf_bp',_day,_eve)
             if not os.path.exists(_eve_folder):
                 os.mkdir(_eve_folder)
-            for sac in os.listdir(os.path.join(src_folder,_day,_eve)):
-                st = obspy.read(os.path.join(src_folder,_day,_eve,sac))
+            for sac in os.listdir(os.path.join(src_root,_day,_eve)):
+                st = obspy.read(os.path.join(src_root,_day,_eve,sac))
                 chn = st[0].stats.channel
                 sta = st[0].stats.station
-                net = st[0].stats.network
                 st.detrend("linear"); st.detrend("constant")
-                st.taper(max_percentage=taper_percentage)
-                st.filter("bandpass",freqmin=freqmin,freqmax=freqmax,zerophase=zerophase)
+                st.filter("bandpass",freqmin=freqmin,freqmax=freqmax,zerophase=True)
                 if chn[-1]=="N":
                     st[0].write(os.path.join(_eve_folder,f"{sta}.r"),format="SAC")
                 if chn[-1]=="E":
                     st[0].write(os.path.join(_eve_folder,f"{sta}.t"),format="SAC")
                 if chn[-1]=="Z":
                     st[0].write(os.path.join(_eve_folder,f"{sta}.z"),format="SAC")
-
-def gen_scc_input(wf_folder,arr_folder="arr_files"):
-    """
-    Prepare the sliding window cross-correlation input files
-    Parameters:
-      wf_folder: The waveform data folder
-      arr_folder: The target output folder
-    """
-    try:
-        shutil.rmtree(arr_folder)
-    except:
-        pass
-    os.mkdir(arr_folder)
-    _days = os.listdir(wf_folder)
-    _days.sort()
-    for _day in _days:
-        _eves = os.listdir(os.path.join(wf_folder,_day))
-        _eves.sort()
-        for _eve in _eves:
-            _eve_folder = os.path.join(wf_folder,_day,_eve)
-            if not os.path.exists(_eve_folder):
-                os.mkdir(_eve_folder)
-            for sac in os.listdir(os.path.join(wf_folder,_day,_eve)):
-                st = obspy.read(os.path.join(wf_folder,_day,_eve,sac),headonly=True)
-                chn = st[0].stats.channel
-                sta = st[0].stats.station
-                net = st[0].stats.network
-                if chn[-1]=="Z":
-                    if hasattr(st[0].stats.sac,'a'):
+                    try:
                         a = st[0].stats.sac.a
-                        arr_file = os.path.join(arr_folder,f"{net}{sta}_P.arr")
+                        arr_file = os.path.join(arr_folder,f"{sta}_P.arr")
                         with open(arr_file,'a') as f:
-                            f.write(os.path.join(wf_folder,_day,_eve,sta+".z"))
+                            f.write(os.path.join("eve_wf_bp",_day,_eve,sta+".z"))
                             f.write(f"  {format(a,'5.2f')}  1\n")
-                    if hasattr(st[0].stats.sac,'t0'):
+                        f.close()
+                    except:
+                        pass
+                    try:
                         t0 = st[0].stats.sac.t0
-                        arr_file = os.path.join(arr_folder,f"{net}{sta}_S.arr")
+                        arr_file = os.path.join(arr_folder,f"{sta}_S.arr")
                         with open(arr_file,'a') as f:
-                            f.write(os.path.join(wf_folder,_day,_eve,sta+".z"))
+                            f.write(os.path.join("eve_wf_bp",_day,_eve,sta+".z"))
                             f.write(f"  {format(t0,'5.2f')}  1\n")
                         f.close()
+                    except:
+                        pass
 
 def gen_dtcc(netsta_list=None,sum_file="out.sum",work_dir="./",cc_threshold=0.7,min_link=4,max_dist=4):
     '''

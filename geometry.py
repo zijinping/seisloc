@@ -2,6 +2,7 @@
 import numpy as np
 from math import sin,cos,asin,acos,pi,radians
 from numba import jit
+import logging
 
 def spherical_dist(lon_1,lat_1,lon_2,lat_2):
     """
@@ -292,7 +293,7 @@ def densityMap(lonlist,latlist,locs,longap,latgap,near=5):
                                 denSums[i+kk,j+ll]+=1
     return denCounts,denSums
 
-def cartesian_rotate(xy,center,rotate):
+def cartesian_rotate(xy,center=[0,0],rotate=0):
     """
     Degree is positive for anticlockwise
     """
@@ -302,7 +303,9 @@ def cartesian_rotate(xy,center,rotate):
         raise Exception("xy should be 2 dimensional matrix")
     if isinstance(center,list):
         center = np.array(center)
-        
+    logging.info("Now in function cartesian_rotate")
+    logging.info(f"Parameters: center({center[0]},{center[1]}) rotate({rotate} degree)")
+
     xy_ref = xy - center
 
     rotate_matrix = [[np.cos(rotate/180*pi),-np.sin(rotate/180*pi)],[np.sin(rotate/180*pi),np.cos(rotate/180*pi)]]
@@ -565,3 +568,29 @@ def lonlat_by_dist(orglon,orglat,delta_x,delta_y,R=6378.1):
         newlon += 180
 
     return newlon,newlat
+
+def ellipse(center=[0,0],xamp=1,yamp=1,inters=101,rotate=0):
+    """
+    return x, y for ellipse drawing.
+    xamp,yamp: amplification of x values and y values
+    inters: the interpolation nodes along the x direction
+    rotate: rotation angle in degree, positive for anticlockwise
+    """
+    x = np.linspace(1,-1,inters)
+    y = np.sqrt(1-x**2)
+    centerx = center[0]
+    centery = center[1]
+    xs = np.concatenate((x,-x))
+    ys = np.concatenate((y,-y))
+    xs = xs*xamp
+    ys = ys*yamp
+    if rotate!=0:
+        logging.info(f"ellipse function rotation applied...")
+        xys = np.zeros((len(xs),2))
+        xys[:,0] = xs
+        xys[:,1] = ys
+        xys_rotate = cartesian_rotate(xys,rotate=rotate)
+        xs = xys_rotate[:,0]
+        ys = xys_rotate[:,1]
+
+    return centerx+xs,centery+ys

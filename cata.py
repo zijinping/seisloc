@@ -6,11 +6,13 @@ import matplotlib.pyplot as plt
 from obspy import UTCDateTime
 from obspy.geodetics import gps2dist_azimuth
 from seisloc.dd import loadDD
+from seisloc.hypoinv import Hypoinv
 from seisloc.geometry import in_rectangle,loc_by_width
 from math import floor,ceil
 from seisloc.statistics import sum_count_Mo,write_sum_count_Mo
 from seisloc.phase_convert import cata2fdsn
 import logging
+from tqdm import tqdm
 
 
 class Catalog():
@@ -588,7 +590,7 @@ class Catalog():
         ax1.set_ylabel("event quantity")
 
         if plt_show == True:
-            plt_show()
+            plt.show()
 
     def diffusion_plot(self,refid=None,refloc=[],diff_cfs=[],unit="day",xlim=[],ylim=[],plt_show=True):
         '''
@@ -878,3 +880,56 @@ def hypoinv2Catalog(inv):
     inv_cata.dict = inv_dict
     inv_cata.init()
     return inv_cata
+
+def dtcc_otc(dtcc_old,inv_old_file,inv_new_file):
+    """
+    Conduct dtcc origin time correction in updated out.sum
+    The output file is a new file with suffix .otc after the input file
+    """
+    #------------ load data ---------------------
+    with open(dtcc_old,'r') as f:
+        lines = f.readlines()
+    inv_old = Hypoinv(inv_old_file)
+    inv_new = Hypoinv(inv_new_file)
+    
+    #------------ processing --------------------
+    f = open(dtcc_old+".otc",'w')
+    for line in tqdm(lines):
+        line = line.rstrip()
+        if line[0] == "#":     # event pair line
+            status = True
+            _,_id1,_id2,_otc = line.split()
+            id1 = int(_id1)
+            id2 = int(_id2)
+            otc = float(_otc)
+            # ------------- read old event time ---------------
+            _et1_old = inv_old[id1][0]
+            et1_old = UTCDateTime.strptime(_et1_old,'%Y%m%d%H%M%S%f')
+            _et2_old = inv_old[id2][0]
+            et2_old = UTCDateTime.strptime(_et2_old,'%Y%m%d%H%M%S%f')
+            # ------------- read new event time ---------------
+            try:
+                _et1_new = inv_new[id1][0]
+            except:
+                status = False       # events not included in the new set
+                continue
+            et1_new = UTCDateTime.strptime(_et1_new,'%Y%m%d%H%M%S%f')
+            try:
+                _et2_new = inv_new[id2][0]
+            except:
+                status = False       # events not included in the new set
+                continue
+            et2_new = UTCDateTime.strptime(_et2_new,'%Y%m%d%H%M%S%f')
+            # ------------- calculate otc --------------------
+            det1 = et1_new - et1_old
+            det2 = et2_new - et2_old
+            otc = otc+(det1-det2)
+            # ------------- prepare writting -----------------
+            #line = line[:14]+format(otc,'.2f')
+        if status == True:
+            if line[0]!="#":       # dtdt line
+                sta, _dtdt, _quality, pha = line.split()
+                dtdt_new = float(_dtdt)-otc
+                line = sta+format(dtdt_new,'8.4f')+" "+_quality+" "+pha
+            f.write(line+"\n")
+    f.close()
