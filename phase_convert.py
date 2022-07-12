@@ -518,7 +518,7 @@ def sc2phs(file_list=[],trims=[None,None,None,None],magThreshold=None,baseid=1,o
     """
     if file_list == []:
         for file in os.listdir("./"):
-            if file[-4:]==".adj":
+            if file[-6:]==".phase":
                 file_list.append(file)
     file_list.sort()
  
@@ -573,7 +573,10 @@ def sc2phs(file_list=[],trims=[None,None,None,None],magThreshold=None,baseid=1,o
                     if e_lon<lon_min or e_lon>lon_max:
                         record_status=False
                         continue  
-            e_dep=line[43:45]     
+            e_dep=line[43:45]    
+            if e_dep == "  ":
+                record_status = False
+                continue
             if e_lat=='  ':       
                 record_status=False      
                 continue          
