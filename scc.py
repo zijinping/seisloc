@@ -55,9 +55,9 @@ def wf_scc(tmplt_st,sta_st,ncom):
         sta_data.append([sta_st.select(component="*E")[0].data])
         sta_data.append([sta_st.select(component="*Z")[0].data])
     elif ncom == 1:
-        tmplt_data.append([tmplt_sta[0].data])
-    dt = temp[0].stats.delta
-    ccmax,aamax,i0,cc_list = data_scc(tmplt_data,st_data,ncom)
+        tmplt_data.append([tmplt_st[0].data])
+        st_data.append([sta_st[0].data])
+    ccmax,aamax,i0,cc_list = data_scc(tmplt_data,sta_data,ncom)
 
 @jit(nopython=True)
 def data_scc(tmplt_data,st_data,ncom):

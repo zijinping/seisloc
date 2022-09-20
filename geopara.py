@@ -11,7 +11,7 @@ class WYpara():
     '''
     This class reads parameters in "wy.para", which contains parameters for GMT plot.
     '''
-    def __init__(self,para_file="/home/zijinping/Desktop/zijinping/resources/wy.para",mode='normal'):
+    def __init__(self,para_file="/home/zijinping/Dropbox/ZJP_resources/wy.para",mode='normal'):
         self.dict={}
         with open(para_file) as f:
             lines = f.readlines()

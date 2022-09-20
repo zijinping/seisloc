@@ -387,7 +387,8 @@ class Hypoinv():
         self.dict_evid = load_sum_evid(sum_file)
         self.dict_evstr = load_sum_evstr(sum_file)
         self.get_locs()
-
+        self.gen_cata_dict()
+    
     def get_locs(self):
         self.locs = []
         tmp = 0
@@ -401,6 +402,19 @@ class Hypoinv():
             self.locs.append([lon,lat,dep,mag])
         self.locs = np.array(self.locs)
         self.avg_res = tmp/self.locs.shape[0]
+
+    def gen_cata_dict(self):
+        self.cataDict = {}
+        for key in self.dict_evid.keys():
+            evstr = self.dict_evid[key][0]
+            etime = UTCDateTime.strptime(evstr,"%Y%m%d%H%M%S%f")
+            lon = self.dict_evid[key][1]
+            lat = self.dict_evid[key][2]
+            dep = self.dict_evid[key][3]
+            mag = self.dict_evid[key][4]
+            res = self.dict_evid[key][5]
+            self.cataDict[key]=[lon,lat,dep,mag,etime]
+
         
     def crop(self,lonmin,lonmax,latmin,latmax):
         pop_list = []

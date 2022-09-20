@@ -30,7 +30,7 @@ def gen_abs_file(arcfile,outfile="Input_Files/absolute.dat",pweight=1,sweight=0.
                 f.write("\n")
 
 
-def prepMOD(head,lon_list,lat_list,dep_list,vel_list,poisson_list):
+def gen_MOD(head,lon_list,lat_list,dep_list,vel_list,poisson_list):
     """
     Output MOD file for the tomoDD based on information provided
     Parameters:
@@ -124,18 +124,19 @@ class MOD():
         self._bld,_nx,_ny,_nz=self.lines[0].split()
         self.bld = float(self._bld)
         self.nx = int(_nx); self.ny = int(_ny); self.nz = int(_nz);
-        self.X = np.zeros((1,self.nx))
+        self.head = [self.bld,self.nx,self.ny,self.nz]
+        self.X = np.zeros(self.nx)
         _X = self.lines[1].split() # Second line is x list 
         for i in range(len(_X)):
-            self.X[0,i]=float(_X[i])
-        self.Y = np.zeros((1,self.ny))
+            self.X[i]=float(_X[i])
+        self.Y = np.zeros(self.ny)
         _Y = self.lines[2].split() # Third line is y list
         for i in range(len(_Y)):
-            self.Y[0,i]=float(_Y[i])
-        self.Z = np.zeros((1,self.nz))
+            self.Y[i]=float(_Y[i])
+        self.Z = np.zeros(self.nz)
         _Z = self.lines[3].split() # Forth line is z list
         for i in range(len(_Z)):
-            self.Z[0,i] = float(_Z[i])
+            self.Z[i] = float(_Z[i])
         VpVs = np.loadtxt(MODfile,skiprows=4)    
         self.Vp = np.zeros((self.nx,self.ny,self.nz))
         self.Vs = np.zeros((self.nx,self.ny,self.nz))  

@@ -508,7 +508,7 @@ class Catalog():
         if plt_show == True:
             plt.show()
         
-    def depth_hist(self,mag_threshold=-9,depthmin=0,depthmax=10,gap=0.5):
+    def depth_hist(self,mag_threshold=-9,depthmin=0,depthmax=10,gap=0.5,pltShow=True):
         bins=np.arange(depthmin,depthmax,gap)
         fig,ax = plt.subplots(1,1,figsize=(6,8))
         ax.xaxis.tick_top()
@@ -519,7 +519,10 @@ class Catalog():
         hist,bins = np.histogram(self.locs[:,2],bins=bins)
         ax.barh(bins[:-1]+gap/2,hist,height=gap,color='gray',edgecolor='k')
         ax.set_ylim([depthmax,depthmin])
-        return ax
+        if pltShow:
+            plt.show()
+        else:
+            return ax
         
     def day_hist(self,
                  reftime=UTCDateTime(2019,1,1,0,0,0),
@@ -933,3 +936,31 @@ def dtcc_otc(dtcc_old,inv_old_file,inv_new_file):
                 line = sta+format(dtdt_new,'8.4f')+" "+_quality+" "+pha
             f.write(line+"\n")
     f.close()
+
+def cata_projection_GMT(cataPth,blon,blat,elon,elat,_widths='-3/3'):
+    """
+    return projected catalog using GMT
+    Parameters
+      cataPth: Path for catalog file, it should be format: 
+                 | evid | lon | lat | dep | mag | relative_time(int,float) |
+    blon,blat: The projection start point longitude and latitude
+    elon,elat: The projection end point longitude and latitude
+       widths: Projection width, "-3/3" means left 3 km and right 3 km
+    """
+    print("Check GMT version: ",end = ' ')
+    if os.system("gmt --version") != 0:   # gmt not installed
+        raise Exception("GMT not installed!")
+    rdName = np.random.randint(100)
+    cmd=f'cata={cataPth}\n'
+    cmd+=f'blon={blon}\n'
+    cmd+=f'blat={blat}\n'
+    cmd+=f'elon={elon}\n'
+    cmd+=f'elat={elat}\n'
+    cmd+=f"widths={_widths}\n"
+    cmd+="awk '{print $2,$3,$4,$6,$5}' $cata|gmt project -C$blon/$blat -E$elon/$elat -Fxyzp -Lw -W$widths -Q >"+\
+        f"{rdName}.project"
+    os.system(cmd)
+    eqs = np.loadtxt(f"{rdName}.project")
+    os.system(f'rm {rdName}.project')
+    
+    return eqs

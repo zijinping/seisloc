@@ -1,5 +1,5 @@
-#-----------------------------------------------------------------------------
 import numpy as np
+from scipy.interpolate import griddata
 from math import sin,cos,asin,acos,pi,radians
 from numba import jit
 import logging
@@ -594,3 +594,12 @@ def ellipse(center=[0,0],xamp=1,yamp=1,inters=101,rotate=0):
         ys = xys_rotate[:,1]
 
     return centerx+xs,centery+ys
+
+def data3Dinterp(nodes,data, lons,lats,deps,method='linear'):
+    # interpolate data by lons, lat, deps provided
+    new_deps, new_lats, new_lons = np.meshgrid(deps, lats, lons, indexing='ij')
+    vals =  griddata(nodes, data, (new_deps, new_lats, new_lons), method=method)
+
+    return vals
+
+

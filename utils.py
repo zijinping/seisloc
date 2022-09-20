@@ -23,6 +23,9 @@ from distutils.sysconfig import get_python_lib
 import matplotlib.pyplot as plt
 
 def add_path():
+    """
+    Add current path to the active python library
+    """
     print(">>> Add path to python library ...")
     pwd = os.getcwd()
     lib_path = get_python_lib()
@@ -32,7 +35,7 @@ def add_path():
 
     print("Done!")
 
-cuda.jit()
+@cuda.jit()
 def _matmul_gpu(A,B,C):
     row,col = cuda.grid(2)
     if row < C.shape[0] and col < C.shape[1]:
@@ -57,7 +60,6 @@ def matmul_gpu(A,B,C,TPX=16,TPY=16):
                                                   C_global_mem)
     cuda.syschronize()
     C_global_gpu = C_global_mem.copy_to_host()
-
 
 def init_logger(log_file,file_level=logging.DEBUG,stream_level=logging.INFO):
     '''
