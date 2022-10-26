@@ -11,8 +11,9 @@ class WYpara():
     '''
     This class reads parameters in "wy.para", which contains parameters for GMT plot.
     '''
-    def __init__(self,para_file="/home/zijinping/Dropbox/ZJP_resources/wy.para",mode='normal'):
+    def __init__(self,para_file="/home/jinping/Dropbox/Weiyuan_share/wy.para",workDir="/home/jinping/Dropbox/Weiyuan_share",mode='normal'):
         self.dict={}
+        self.dict['workDir']=workDir
         with open(para_file) as f:
             lines = f.readlines()
             for line in lines:
@@ -22,10 +23,7 @@ class WYpara():
                 if line[:2]=="#=":                      # after this are functions
                     break
                 if len(line)==0 or line[0]=='#' or \
-                   line[:4]=="gmt ":                    # ignore comment line and gmt set line
-                    continue
-                if line[:9]=="root_path":
-                    self.dict["root_path"] = re.split("=",line.rstrip())[1]
+                   re.split(" ",line)[0] in ["gmt","if","","elif","then","fi"]: # ignore comment lines, gmt set lines, and shell related lines
                     continue
                 content = re.split(" +",line.rstrip())[0]
                 para,info = re.split("=",content)
@@ -82,6 +80,24 @@ class WYpara():
         for key in tmp_dict:
             tmp_dict[key] = np.array(tmp_dict[key])
         self.dict['Neo_faults'] = tmp_dict
+        #---------------------------------------------------------
+        tmp_dict={}
+        count = 0
+        with open(self.dict['WY_Neo_faults'],'r') as f:
+            for line in f:
+                line = line.rstrip()
+                if line[0] == "#":
+                    continue     # pass comment line
+                elif line[0]==">":
+                    count+=1
+                    tmp_dict[count]=[]
+                else:
+                    _lon,_lat = re.split(" +",line)
+                    tmp_dict[count].append([float(_lon),float(_lat)])
+        f.close()
+        for key in tmp_dict:
+            tmp_dict[key] = np.array(tmp_dict[key])
+        self.dict['WY_Neo_faults'] = tmp_dict
         #---------------------------------------------------------
         tmp_arr = []
         with open(self.dict['city_locs'],'r') as f:

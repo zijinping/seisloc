@@ -386,21 +386,22 @@ class Catalog():
         if plt_show==True:
             plt.show()
     
-    def MTplot(self,
+    def MT_plot(self,
                 xlim=[],
                 ylim=[0,5],
                 unit="day",
-                reftime=None,
+                refTime=None,
                 cmap=None,
                 vmin=0,
                 vmax=1,
-                figsize=(10,5),
-                plt_show=True):
+                figSize=(10,5),
+                pltShow=True):
         """
         unit: 'day','hour' or 'second'
         """
         # ----------------- initiate -----------------------------------
-        fig,ax = plt.subplots(1,figsize=figsize)
+        assert unit in ['day','hour','second']
+        fig,ax = plt.subplots(1,figsize=figSize)
         if unit == "day":
             denominator = (24*60*60)
             plt.xlabel("Time (day)")
@@ -410,18 +411,18 @@ class Catalog():
         elif unit == "second":
             denominator = 1
             plt.xlabel("Time (second)")
-        if reftime == None:
-            reftime = self.first_time + np.min(self.relative_seconds)
-        print("Reference time is: ", reftime)
+        if refTime == None:
+            refTime = self.first_time + np.min(self.relative_seconds)
+        print("Reference time is: ", refTime)
         if len(xlim) == 0:
             tbtime = self.first_time + np.min(self.relative_seconds)
             tetime = self.first_time + np.max(self.relative_seconds)
         if len(xlim) == 1:
-            tbtime = reftime+xlim[0]*denominator
+            tbtime = refTime+xlim[0]*denominator
             tetime = self.first_time + np.max(self.relative_seconds)
         if len(xlim) == 2:
-            tbtime = reftime+xlim[0]*denominator
-            tetime = reftime+xlim[1]*denominator
+            tbtime = refTime+xlim[0]*denominator
+            tetime = refTime+xlim[1]*denominator
 
         #----------------- processing ---------------------------------
         for key in self.keys:
@@ -429,7 +430,7 @@ class Catalog():
             if etime< tbtime or etime>tetime:
                 continue
             emag = self.dict[key][3]
-            diff_seconds = etime - reftime
+            diff_seconds = etime - refTime
             diff_x = diff_seconds/denominator
             if cmap == None:
                 plt.plot([diff_x,diff_x],[ylim[0],emag],c='grey')
@@ -440,10 +441,10 @@ class Catalog():
         if len(xlim)>0:
             plt.xlim(xlim)
         else:
-            plt.xlim(left = (tbtime-reftime)/denominator-0.1,right = (tetime-reftime)/denominator+0.1)
+            plt.xlim(left = (tbtime-refTime)/denominator-0.1,right = (tetime-refTime)/denominator+0.1)
         plt.ylabel("Magnitude")
 
-        if plt_show == True:
+        if pltShow == True:
             plt.show()
 
     def dep_dist_plot(self,refid=None,
@@ -811,12 +812,11 @@ class Catalog():
                           zorder=zorder,
                           wspace=None,hspace=None)
         return axs
-    def sum_count_Mo(self,starttime,endtime):
+    def sum_count_Mo(self,starttime,endtime,outFile='sum_count_Mo.txt',mode='day'):
         self.dict_count_Mo = sum_count_Mo(self,starttime,endtime)
-    def write_sum_count_Mo(self,outfile="sum_count_Mo.txt",mode='day'):
-        write_sum_count_Mo(self.dict_count_Mo,outfile,mode)
+        write_sum_count_Mo(self.dict_count_Mo,outFile,mode)
 
-    def write_info(self,info_file="lon_lat_dep_mag_relative_days.txt",reftime=None,disp=False):
+    def write_info(self,info_file="lon_lat_dep_mag_relative_days_time.txt",reftime=None,disp=False):
         if reftime == None:
             reftime = self.first_time
         print("The reference time is: ",reftime)
@@ -826,6 +826,7 @@ class Catalog():
             lat = self.dict[key][1]
             dep = self.dict[key][2]
             mag = self.dict[key][3]
+            etime = self.dict[key][4]
             relative_days = (self.dict[key][4]-reftime)/(24*60*60)
             _key = format(key,'8d')
             _lon = format(lon,'11.5f')
@@ -833,7 +834,7 @@ class Catalog():
             _dep = format(dep,'7.2f')
             _mag = format(mag,'4.1f')
             _relative_days = format(relative_days,'9.3f')
-            line = _key+_lon+_lat+_dep+_mag+_relative_days
+            line = _key+_lon+_lat+_dep+_mag+_relative_days+" "+str(etime)
             f.write(line+"\n")
             if disp == True:
                 print(line)
@@ -896,7 +897,7 @@ def dtcc_otc(dtcc_old,inv_old_file,inv_new_file):
     inv_new = Hypoinv(inv_new_file)
     
     #------------ processing --------------------
-    f = open(dtcc_old+".otc",'w')
+    f = open("dtcc.otc",'w')
     for line in tqdm(lines):
         line = line.rstrip()
         if line[0] == "#":     # event pair line
@@ -928,39 +929,7 @@ def dtcc_otc(dtcc_old,inv_old_file,inv_new_file):
             det2 = et2_new - et2_old
             otc = otc+(det1-det2)
             # ------------- prepare writting -----------------
-            #line = line[:14]+format(otc,'.2f')
+            line = line[:14]+format(otc,'.2f')
         if status == True:
-            if line[0]!="#":       # dtdt line
-                sta, _dtdt, _quality, pha = line.split()
-                dtdt_new = float(_dtdt)-otc
-                line = sta+format(dtdt_new,'8.4f')+" "+_quality+" "+pha
             f.write(line+"\n")
     f.close()
-
-def cata_projection_GMT(cataPth,blon,blat,elon,elat,_widths='-3/3'):
-    """
-    return projected catalog using GMT
-    Parameters
-      cataPth: Path for catalog file, it should be format: 
-                 | evid | lon | lat | dep | mag | relative_time(int,float) |
-    blon,blat: The projection start point longitude and latitude
-    elon,elat: The projection end point longitude and latitude
-       widths: Projection width, "-3/3" means left 3 km and right 3 km
-    """
-    print("Check GMT version: ",end = ' ')
-    if os.system("gmt --version") != 0:   # gmt not installed
-        raise Exception("GMT not installed!")
-    rdName = np.random.randint(100)
-    cmd=f'cata={cataPth}\n'
-    cmd+=f'blon={blon}\n'
-    cmd+=f'blat={blat}\n'
-    cmd+=f'elon={elon}\n'
-    cmd+=f'elat={elat}\n'
-    cmd+=f"widths={_widths}\n"
-    cmd+="awk '{print $2,$3,$4,$6,$5}' $cata|gmt project -C$blon/$blat -E$elon/$elat -Fxyzp -Lw -W$widths -Q >"+\
-        f"{rdName}.project"
-    os.system(cmd)
-    eqs = np.loadtxt(f"{rdName}.project")
-    os.system(f'rm {rdName}.project')
-    
-    return eqs

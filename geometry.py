@@ -1,8 +1,11 @@
+import os
 import numpy as np
 from scipy.interpolate import griddata
 from math import sin,cos,asin,acos,pi,radians
 from numba import jit
 import logging
+from obspy.geodetics import gps2dist_azimuth
+import subprocess
 
 def spherical_dist(lon_1,lat_1,lon_2,lat_2):
     """
@@ -272,28 +275,7 @@ def loc_by_width_sphe(alon,alat,blon,blat,width,direction='left'):
         raise Error("Point a and b shouldn't have the same location")
     return bblon*180/pi,bblat*180/pi
 
-@jit(nopython=True)
-def densityMap(lonlist,latlist,locs,longap,latgap,near=5):
-    denSums = np.zeros((len(latlist),len(lonlist)))
-    denCounts = np.zeros((len(latlist),len(lonlist)))
-    
-    for i,lat in enumerate(latlist):
-        for j,lon in enumerate(lonlist):
-            for ii in range(-1*near+1,near):
-                for jj in range(-1*near+1,near):
-                    if (i+ii)>=0 and (i+ii)<len(latlist) and (j+jj)>=0 and (j+jj)<len(lonlist):
-                        denCounts[i+ii,j+jj]+=1
-            for loc in locs:
-                loclon = loc[0]
-                loclat = loc[1]
-                if loclon>=lon and loclon<lon+longap and loclat>=lat and loclat<lat+latgap:
-                    for kk in range(-1*near+1,near):
-                        for ll in range(-1*near+1,near):
-                            if (i+kk)>=0 and (i+kk)<len(latlist) and (j+ll)>=0 and (j+ll)<len(lonlist):
-                                denSums[i+kk,j+ll]+=1
-    return denCounts,denSums
-
-def cartesian_rotate(xy,center=[0,0],rotate=0):
+def cartesian_rotate(xy,center=[0,0],degree=0):
     """
     Degree is positive for anticlockwise
     """
@@ -304,11 +286,11 @@ def cartesian_rotate(xy,center=[0,0],rotate=0):
     if isinstance(center,list):
         center = np.array(center)
     logging.info("Now in function cartesian_rotate")
-    logging.info(f"Parameters: center({center[0]},{center[1]}) rotate({rotate} degree)")
+    logging.info(f"Parameters: center({center[0]},{center[1]}) rotate({degree} degree)")
 
     xy_ref = xy - center
 
-    rotate_matrix = [[np.cos(rotate/180*pi),-np.sin(rotate/180*pi)],[np.sin(rotate/180*pi),np.cos(rotate/180*pi)]]
+    rotate_matrix = [[np.cos(degree/180*pi),-np.sin(degree/180*pi)],[np.sin(degree/180*pi),np.cos(degree/180*pi)]]
     rotate_matrix = np.array(rotate_matrix)
 
     xy_rotate = np.matmul(rotate_matrix,xy_ref.T).T + center
@@ -330,8 +312,7 @@ def event_rotate(inFile,center,deg):
             lat = float(_lat)
             lon = float(_lon)
             xys.append([lon,lat])
-    xys_rot = spherical_rotate(xys,center=center,rotate=deg)
-    #xys_rot = rotate(xys,center=center,deg=deg)
+    xys_rot = spherical_rotate(xys,center=center,degree=deg)
 
     f = open(outFile,'w')
     for i in range(len(cont)):
@@ -360,8 +341,7 @@ def sta_rotate(inFile,center,deg):
             lonlats.append([float(_lon),float(_lat)])
             _eles.append(_ele)
             
-    lonlats_rot = spherical_rotate(lonlats,center=center,rotate=deg)
-    #lonlats_rot = rotate(lonlats,center=center,deg=deg)
+    lonlats_rot = spherical_rotate(lonlats,center=center,degree=deg)
     f = open(outFile,'w')
     for i in range(len(stas)):
         f.write(format(stas[i],"<7s"))
@@ -373,7 +353,7 @@ def sta_rotate(inFile,center,deg):
         f.write(_eles[i])
         f.write("\n")
 
-def spherical_rotate(lonlats,center,rotate):
+def spherical_rotate(lonlats,center,degree):
     """
     rotate in degree, postive value for anti-clockwise direction
     """
@@ -382,15 +362,15 @@ def spherical_rotate(lonlats,center,rotate):
         lonlatBs = np.array(lonlatBs)
     lonlatCs = []
     if len(lonlatBs.shape) == 1:
-        lonC,latC = _spherical_rotate(lonlatBs,center,rotate)
+        lonC,latC = _spherical_rotate(lonlatBs,center,degree)
         lonlatCs.append([lonC,latC])
     else:
         for i in range(lonlatBs.shape[0]):
-            lonC,latC = _spherical_rotate(lonlatBs[i,:],center,rotate)
+            lonC,latC = _spherical_rotate(lonlatBs[i,:],center,degree)
             lonlatCs.append([lonC,latC])
     return np.array(lonlatCs)
             
-def _spherical_rotate(lonlatB,center,rotate):
+def _spherical_rotate(lonlatB,center,degree):
 
     # A the rotation center, 
     # B the point need to be rotated
@@ -405,7 +385,7 @@ def _spherical_rotate(lonlatB,center,rotate):
     lonB = np.deg2rad(lonlatB[0])
     latB = np.deg2rad(lonlatB[1])
     
-    rotate = np.deg2rad(rotate)
+    rotate = np.deg2rad(degree)
     
     if rotate % (2*pi) == 0:      # no change
         return lonlatB[0],lonlatB[1]
@@ -480,7 +460,7 @@ def _spherical_rotate(lonlatB,center,rotate):
 
     return np.rad2deg(lonC),np.rad2deg(latC)
 
-def mesh_rotate(x1,y1,center,rotate,method="Cartesian"):
+def mesh_rotate(x1,y1,center,degree,method="Cartesian"):
     ori_shape = x1.shape
     length = ori_shape[0] * ori_shape[1]
     tmp_x1 = np.zeros((length,1))
@@ -489,9 +469,9 @@ def mesh_rotate(x1,y1,center,rotate,method="Cartesian"):
     tmp_y1[:,0] = y1.ravel()
     tmp_x1y1 = np.concatenate((tmp_x1,tmp_y1),axis=1)
     if method == "Cartesian":
-        rotated_tmp_x1y1 = cartesian_rotate(tmp_x1y1,center=center,rotate=rotate)
+        rotated_tmp_x1y1 = cartesian_rotate(tmp_x1y1,center=center,degree=degree)
     elif method == "Sphere":
-        rotated_tmp_x1y1 = spherical_rotate(tmp_x1y1,center=center,rotate=rotate)
+        rotated_tmp_x1y1 = spherical_rotate(tmp_x1y1,center=center,degree=degree)
     else:
         raise Exception("Method provided not in ['Cartesian','Sphere']")
     rotated_x1 = rotated_tmp_x1y1[:,0].reshape(ori_shape[0],ori_shape[1])
@@ -589,17 +569,139 @@ def ellipse(center=[0,0],xamp=1,yamp=1,inters=101,rotate=0):
         xys = np.zeros((len(xs),2))
         xys[:,0] = xs
         xys[:,1] = ys
-        xys_rotate = cartesian_rotate(xys,rotate=rotate)
+        xys_rotate = cartesian_rotate(xys,degree=degree)
         xs = xys_rotate[:,0]
         ys = xys_rotate[:,1]
 
     return centerx+xs,centery+ys
 
-def data3Dinterp(nodes,data, lons,lats,deps,method='linear'):
-    # interpolate data by lons, lat, deps provided
-    new_deps, new_lats, new_lons = np.meshgrid(deps, lats, lons, indexing='ij')
-    vals =  griddata(nodes, data, (new_deps, new_lats, new_lons), method=method)
+def data3Dinterp(nodes,data, xs,ys,zs,method='linear'):
+    # interpolate data by xs, lat, zs provided
+    zzzs, yyys, xxxs = np.meshgrid(zs, ys, xs, indexing='ij')
+    vals =  griddata(nodes, data, (zzzs, yyys, xxxs), method=method)
 
     return vals
+    
+def data_extraction(xs,ys,dataXs,dataYs,dataVvs,mode='geo'):
+    """
+    extract data from 2D array for provided points (x,y). Cloest node values returned
+    parameters
+    |      xs: 1D x values list to be extracted
+    |      ys: 1D y values list to be extracted
+    |  dataXs: 1D x values list for 2D array
+    |  dataYs: 1D y values list for 2D array
+    | dataVvs: 2D data values to be extracted
+    |    mode: "geo" or "km"
+    return dists and values. If mode is 'geo', dists in unit of 'km'
 
+    """
+    assert mode in ['geo','km']
+    
+    vs = []
+    dists = []
+    
+    for i in range(len(xs)):
+        tmpx = xs[i]
+        tmpy = ys[i]
+        if mode == 'geo':
+            dist,_,_ = gps2dist_azimuth(ys[0],xs[0],tmpy,tmpx)
+            distKm = dist/1000
+        elif mode == "km":
+            distKm = np.sqrt((tmpx-xs[0])**2+(tmpy-ys[0])**2)
 
+        tmpdx = np.abs(dataXs-tmpx)
+        tmpidx = np.argmin(tmpdx)
+        tmpdy = np.abs(dataYs-tmpy)
+        tmpidy = np.argmin(tmpdy)
+        vs.append(dataVvs[tmpidy,tmpidx])
+        dists.append(distKm)
+    
+    return dists,vs
+    
+def cata_projection_GMT(cataPth,blon,blat,elon,elat,_widths='-3/3'):
+    """
+    return projected catalog using GMT
+    Parameters
+      cataPth: Path for catalog file, it should be format: 
+                 | evid | lon | lat | dep | mag | relative_time(int,float) |
+    blon,blat: The projection start point longitude and latitude
+    elon,elat: The projection end point longitude and latitude
+       widths: Projection width, "-3/3" means left 3 km and right 3 km
+    """
+    print("Check GMT version: ",end = ' ')
+    if os.system("gmt --version") != 0:   # gmt not installed
+        raise Exception("GMT not installed!")
+    rdName = np.random.randint(100)
+    cmd=f'cata={cataPth}\n'
+    cmd+=f'blon={blon}\n'
+    cmd+=f'blat={blat}\n'
+    cmd+=f'elon={elon}\n'
+    cmd+=f'elat={elat}\n'
+    cmd+=f"widths={_widths}\n"
+    cmd+="awk '{print $2,$3,$4,$6,$5}' $cata|gmt project -C$blon/$blat -E$elon/$elat -Fxyzp -Lw -W$widths -Q >"+\
+        f"{rdName}.project"
+    os.system(cmd)
+    eqs = np.loadtxt(f"{rdName}.project")
+    os.system(f'rm {rdName}.project')
+    
+    return eqs
+    
+def cata_projection_GMT(cata,blon,blat,elon,elat,_widths='-3/3'):
+    """
+    return projected catalog using GMT
+    Parameters
+         cata: Python Catalog object from seisloc.cata
+    blon,blat: The projection start point longitude and latitude
+    elon,elat: The projection end point longitude and latitude
+       widths: Projection width, "-3/3" means left 3 km and right 3 km
+    """
+    print("Check GMT version: ",end = ' ')
+    if os.system("gmt --version") != 0:   # gmt not installed
+        raise Exception("GMT not installed!")
+    cata.write_info(info_file="tmp_cata.txt")
+    rdName = np.random.randint(100)
+    cmd=f'blon={blon}\n'
+    cmd+=f'blat={blat}\n'
+    cmd+=f'elon={elon}\n'
+    cmd+=f'elat={elat}\n'
+    cmd+=f"widths={_widths}\n"
+    cmd+="awk '{print $2,$3,$4,$6,$5}' tmp_cata.txt|gmt project -C$blon/$blat -E$elon/$elat -Fxyzp -Lw -W$widths -Q >"+\
+        f"{rdName}.project"
+    os.system(cmd)
+    eqs = np.loadtxt(f"{rdName}.project")
+    os.system(f'rm {rdName}.project')
+    subprocess.run(["rm","tmp_cata.txt"])
+    
+    return eqs
+    
+def xy_projection_GMT(xys,blon,blat,elon,elat,_widths='-3/3'):
+    """
+    return projected xy points using GMT
+    Parameters
+         xys: 2D list of xy points, first row is lon, second row is lat
+    blon,blat: The projection start point longitude and latitude
+    elon,elat: The projection end point longitude and latitude
+       widths: Projection width, "-3/3" means left 3 km and right 3 km
+    """
+    print("Check GMT version: ",end = ' ')
+    if os.system("gmt --version") != 0:   # gmt not installed
+        raise Exception("GMT not installed!")
+    if isinstance(xys,list):
+        xys = np.array(xys)
+    if len(xys.shape)!=2:
+        raise Exception("Expected xys to be 2-D array")
+    np.savetxt("tmp_xys.tmp",xys)
+    rdName = np.random.randint(100)
+    cmd=f'blon={blon}\n'
+    cmd+=f'blat={blat}\n'
+    cmd+=f'elon={elon}\n'
+    cmd+=f'elat={elat}\n'
+    cmd+=f"widths={_widths}\n"
+    cmd+="awk '{print $1,$2}' tmp_xys.tmp|gmt project -C$blon/$blat -E$elon/$elat -Fxyp -Lw -W$widths -Q >"+\
+        f"{rdName}.project"
+    os.system(cmd)
+    results = np.loadtxt(f"{rdName}.project")
+    os.system(f'rm {rdName}.project')
+    subprocess.run(["rm","tmp_xys.tmp"])
+    
+    return results  

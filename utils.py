@@ -181,7 +181,7 @@ def load_sta(sta_file):
                 sta_dict[net][sta] = [float(_lon),float(_lat),float(_ele),label]
     return sta_dict
 
-def draw_vel(ax,dep_list,vel_list,color='k',linestyle='-'):
+def draw_vel(ax,dep_list,vel_list,color='k',linestyle='-',label=""):
     """
     Draw velocity line on the ax based on the depth list and velocity list
     """
@@ -192,7 +192,7 @@ def draw_vel(ax,dep_list,vel_list,color='k',linestyle='-'):
         points_list.append([dep_list[i],vel_list[i]])
         
     points_list = np.array(points_list)
-    line, = ax.plot(points_list[:,1],points_list[:,0],color=color,linestyle=linestyle)
+    line, = ax.plot(points_list[:,1],points_list[:,0],color=color,linestyle=linestyle,label=label)
     return line
 
 
