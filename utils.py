@@ -68,6 +68,10 @@ def init_logger(log_file,file_level=logging.DEBUG,stream_level=logging.INFO):
         file_level: level for file writing
         stream_level: level for stream writing
     '''
+    dirPth = os.path.dirname(log_file)
+    if dirPth!=" " and not os.path.exists(dirPth):
+        os.mkdir(dirPth)
+        
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     fh = logging.FileHandler(log_file,mode='w')
@@ -126,7 +130,9 @@ def extract_set_info(pth,sta_file,depth=2):
                         f = open(os.path.join(pth,item,file),'r')
                         for line in f:
                             line = line.rstrip()
-                            julday = int(line)
+                            _year,_julday=line.split()
+                            year = int(_year)
+                            julday = int(_julday)
                             juldays.append(julday)
                     try:
                         st = obspy.read(os.path.join(pth,item,file),headonly=True)
@@ -154,6 +160,7 @@ def extract_set_info(pth,sta_file,depth=2):
                 continue
             if len(juldays) > 0:
                 availdays.append(sorted(juldays))
+    print(availdays)
     if len(availdays)>0 and len(availdays)!= len(netstas):
         raise Exception("len(availdays) not equal len(netstas)")
     setinfo["availdays"] = availdays
@@ -174,7 +181,7 @@ def load_sta(sta_file):
     with open(sta_file,'r') as f:
         for line in f:
             line = line.rstrip()
-            net,sta,_lon,_lat,_ele,label=re.split(" +",line)
+            net,sta,_lon,_lat,_ele,label,_=re.split(" +",line)
             if net not in sta_dict:
                 sta_dict[net]={}
             if sta not in sta_dict[net]:
@@ -194,26 +201,6 @@ def draw_vel(ax,dep_list,vel_list,color='k',linestyle='-',label=""):
     points_list = np.array(points_list)
     line, = ax.plot(points_list[:,1],points_list[:,0],color=color,linestyle=linestyle,label=label)
     return line
-
-
-def read_sac_ref_time(tr):
-    """
-    Read and return reference time of a sac file in obspy.UTCDateTime format.
-
-    Parameter
-    --------
-    tr: Trace object of obspy
-    """
-
-    nzyear = tr.stats.sac.nzyear
-    nzjday = tr.stats.sac.nzjday
-    nzhour = tr.stats.sac.nzhour
-    nzmin = tr.stats.sac.nzmin
-    nzsec = tr.stats.sac.nzsec
-    nzmsec = tr.stats.sac.nzmsec*0.001
-    year,month,day = month_day(nzyear,nzjday)
-    sac_ref_time = UTCDateTime(year,month,day,nzhour,nzmin,nzsec)+nzmsec
-    return sac_ref_time
 
 def get_st(net,sta,starttime,endtime,f_folder,pad=False,fill_value=None):
     """

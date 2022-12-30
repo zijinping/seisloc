@@ -55,7 +55,7 @@ def load_sta(sta_file):
     with open(sta_file,'r') as f:
         for line in f:
             line = line.rstrip()
-            net,sta,_lon,_lat,_ele,label=re.split("[ ,;]+",line)
+            net,sta,_lon,_lat,_ele,label=re.split("[ ,;]+",line)[:6]
             if net not in sta_dict:
                 sta_dict[net]={}
             if sta not in sta_dict[net]:
@@ -239,7 +239,7 @@ def sta2eqt(sta_file,out_file):
 
 
 class Sta():
-    def __init__(self,sta_file="/home/zijinping/Dropbox/resources/stations/sta_sum_202110.txt"):
+    def __init__(self,sta_file="/home/jinping/Dropbox/Weiyuan_resources/geo_elements/stations/sta_sum_202207.txt"):
         self.sta_file = sta_file
         self.dict = load_sta(sta_file)
         self.get_locs()

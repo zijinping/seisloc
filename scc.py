@@ -15,6 +15,7 @@
 
 import obspy
 from obspy import Stream,UTCDateTime
+from obspy.io.sac import SACTrace
 from obspy.geodetics import gps2dist_azimuth
 from math import sqrt
 import numpy as np
@@ -24,40 +25,70 @@ import re
 import glob
 import shutil
 from numba import jit
+from numba.typed import List
 from tqdm import tqdm
 from seisloc.hypoinv import load_sum_evid,load_sum_evstr
 
-def wf_scc(tmplt_st,sta_st,ncom):
+def wf_scc(tmplt_st,sta_st,tb,te,maxShift,marker='t0',bestO=False):
     """
     Sliding-window cross-correlation between template and target waveform
+    Reference time should be the event origin time
     reference: Yang et al.,2009, BSSA.
 
     Parameters
     -----------
-    tmplt_st: template waveform of one station
+     tmplt_st: template waveform of one station
        sta_st: target waveform of the same station
-         ncom: number of component, n = 3 means 3 components cross-correlation
+        tb,te: begin and end time window for waveform center on the corresponding marker
+     maxShift: maximum shift value for sliding, in seconds         
+        bestO: bool. If True, output the best fit origin time
 
     Return
     -----------
         ccmax: maximum cross-correlation coefficient
         aamax: amplitude ratio at ccmax
-        i0: the shifting index at ccmax
+           i0: the shifting index at ccmax
+      cc_list: cross-correlation values
     """
-
-    tmplt_data = []
-    sta_data = []
+    tmplt_st.sort()
+    sta_st.sort()
+    
+    assert len(tmplt_st) == len(sta_st)
+    ncom = len(tmplt_st)    # number of component, n = 3 means 3 components cross-correlation
+    assert ncom in [1,3]
+    
+    assert tmplt_st[0].stats.delta == sta_st[0].stats.delta
+    delta = tmplt_st[0].stats.delta
+    
+    markerTime1 = tmplt_st[0].stats.sac[marker]
+    sac1 = SACTrace.from_obspy_trace(tmplt_st[0])
+    reftime1 = sac1.reftime
+    tmplt_st.trim(reftime1+markerTime1+tb,reftime1+markerTime1+te)
+    
+    markerTime2 = sta_st[0].stats.sac[marker]
+    sac2 = SACTrace.from_obspy_trace(sta_st[0])
+    reftime2 = sac2.reftime
+    sta_st.trim(reftime2+markerTime2+tb-maxShift,reftime2+markerTime2+te+maxShift)
+    assert sac1.o == 0
+    assert sac2.o == 0
+    
+    tmplt_data = List()
+    sta_data = List()
+    cc_list = List()
     if ncom == 3:
-        tmplt_data.append([tmplt_st.select(component="*N")[0].data])
-        tmplt_data.append([tmplt_st.select(component="*E")[0].data])
-        tmplt_data.append([tmplt_st.select(component="*Z")[0].data])
-        sta_data.append([sta_st.select(component="*N")[0].data])
-        sta_data.append([sta_st.select(component="*E")[0].data])
-        sta_data.append([sta_st.select(component="*Z")[0].data])
+        for i in range(3):
+            tmplt_data.append(tmplt_st[i].data)
+            sta_data.append(sta_st[i].data)
     elif ncom == 1:
-        tmplt_data.append([tmplt_st[0].data])
-        st_data.append([sta_st[0].data])
+        tmplt_data.append(tmplt_st[0].data)
+        st_data.append(sta_st[0].data)
     ccmax,aamax,i0,cc_list = data_scc(tmplt_data,sta_data,ncom)
+    bestTime = markerTime2 + (i0-(len(cc_list)-1)/2)*delta
+    
+    if bestO:
+        bestTime = (i0-(len(cc_list)-1)/2)*delta
+    
+    return ccmax,aamax,bestTime,cc_list
 
 @jit(nopython=True)
 def data_scc(tmplt_data,st_data,ncom):
@@ -208,8 +239,8 @@ def gen_dtcc(netsta_list=None,sum_file="out.sum",work_dir="./",cc_threshold=0.7,
     
     # Remove existing dt.cc files 
     cc_files = glob.glob(os.path.join(work_dir,"dt.cc*"))
-    for cc_file in cc_files:
-        os.remove(cc_file)
+    if len(cc_files)>0:
+        raise Exception("dt.cc files exsited!")
     if netsta_list == None:
         netsta_list = []
         for folder in os.listdir(work_dir):

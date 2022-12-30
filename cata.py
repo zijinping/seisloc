@@ -16,23 +16,23 @@ from tqdm import tqdm
 
 
 class Catalog():
-    def __init__(self,locfile="hypoDD.reloc"):
+    def __init__(self,locFile="hypoDD.reloc"):
         """
         The programme will read in hypoDD relocation file by default. If no hypoDD
-        file provided (locfile=None), it will generate an empty catalog. 
+        file provided (locFile=None), it will generate an empty catalog. 
         A user can set up a new catalog by providing a dict in the form:
             dict[evid] = [lon,lat,dep,mag,UTCDateTime]
         example:
-        >>> cata = Catalog(locfile=None)
+        >>> cata = Catalog(locFile=None)
         >>> cata.dict = cata_dict  # cata_dict is a dictionary follows above format
         >>> cata.init()            # initiation of the class
         >>> print(cata)            # basic information will be printed
         """
-        if locfile != None:
-            if not os.path.exists(locfile):
-                raise Exception(f"{locfile} not existed!")
-            self.dict,_ = loadDD(locfile)
-            print("successfully load catalog file: "+locfile)
+        if locFile != None:
+            if not os.path.exists(locFile):
+                raise Exception(f"{locFile} not existed!")
+            self.dict,_ = loadDD(locFile)
+            print("successfully load catalog file: "+locFile)
             self.init()
         else:
             print("*** No hypoDD data provided, an empty Catalog created.")
@@ -156,41 +156,41 @@ class Catalog():
     def hplot(self,
               xlim=[],
               ylim=[],
-              figsize=None,
-              edgecolor='grey',
-              markersize=6,
-              size_ratio=1,
-              imp_mag=None,
-              reftime = None,
+              figSize=None,
+              edgeColor='grey',
+              markerSize=6,
+              sizeRatio=1,
+              impMag=None,
+              refTime = None,
               cmap = None,
               vmin=0,
               vmax=1,
               unit="day",
-              add_section=False,
+              addSection=False,
               alonlat=[104,29],
               blonlat=[105,30],
-              section_width=0.05,
+              secWidth=0.05,
               crop=False,
               ax = None,
-              plt_show=True):
+              pltShow=True):
         """
         Map view plot of earthquakes,earthquake denoted default by black circle
         Parameters:
         |         xlim: longitude limit, e.g. [104,105]
         |         ylim: latitude limit, e.g. [29,30]
-        |      figsize: e.g. (5,5)
-        |    edgecolor: earthquake marker(circle) edgecolor
-        |      imp_mag: important magnitude. Magnitude larger than this level will be 
+        |      figSize: e.g. (5,5)
+        |    edgeColor: earthquake marker(circle) edgeColor
+        |      impMag: important magnitude. Magnitude larger than this level will be 
         |               highlighted
-        |     reftime: reference time in UTCDateTime used to constrain colormap, if
+        |     refTime: reference time in UTCDateTime used to constrain colormap, if
         |               no colormap provided, seismicity will plotted by default
         |         cmap: colormap, check 'matplotlib' for more detail.
         |    vmin,vmax: the minimum and maximum value for colormap
         |         unit: "day","hour", or "second" for vmin and vmax
-        |  add_section: if want to add one cross-section, set True
+        |  addSection: if want to add one cross-section, set True
         |      alonlat: the [lon,lat] of the section start point 'a'
         |      blonlat: the [lon,lat] of the section end point 'b'
-        |section_width: width of section in degree
+        |secWidth: width of section in degree
         |         crop: if True, the dataset will cut dataset to leave only events
                         inside the cross-section
         """
@@ -198,17 +198,17 @@ class Catalog():
         if ax != None:     # get current axis
             plt.sca(ax)
         else:
-            if figsize != None:
-                plt.figure(figsize=figsize)
-        if reftime == None:
-            reftime = self.first_time + np.min(self.relative_seconds)
-        if section_width <=0:
+            if figSize != None:
+                plt.figure(figSize=figSize)
+        if refTime == None:
+            refTime = self.first_time + np.min(self.relative_seconds)
+        if secWidth <=0:
             raise Error("Width <= 0")
         # plot all events
-        if add_section==True:
+        if addSection==True:
             alon = alonlat[0]; alat = alonlat[1]
             blon = blonlat[0]; blat = blonlat[1]
-            results = in_rectangle(self.locs,alon,alat,blon,blat,section_width/2)
+            results = in_rectangle(self.locs,alon,alat,blon,blat,secWidth/2)
             jj = np.where(results[:,0]==1)
             if crop == True:
                 self.update_keys(jj)
@@ -219,13 +219,13 @@ class Catalog():
         if cmap == None:
             plt.scatter(self.locs[:,0],
                     self.locs[:,1],
-                    (self.locs[:,3]+2)*size_ratio,
-                    edgecolors = edgecolor,
+                    (self.locs[:,3]+2)*sizeRatio,
+                    edgecolors = edgeColor,
                     facecolors='none',
                     marker='o',
                     alpha=1)
         else:
-            shift_seconds = reftime - self.first_time
+            shift_seconds = refTime - self.first_time
             times_plot = self.relative_seconds-shift_seconds
             if unit=="day":
                 times_plot = times_plot/(24*60*60)
@@ -236,7 +236,7 @@ class Catalog():
             im = plt.scatter(self.locs[:,0],
                     self.locs[:,1],
                     c=times_plot,
-                    s=(self.locs[:,3]+2)*size_ratio,
+                    s=(self.locs[:,3]+2)*sizeRatio,
                     cmap = cmap,
                     vmin = vmin,
                     vmax = vmax,
@@ -246,30 +246,30 @@ class Catalog():
             cb.set_label(unit)
 
         # plot large events
-        if imp_mag != None:
-            kk = np.where(self.locs[:,3]>=imp_mag)
+        if impMag != None:
+            kk = np.where(self.locs[:,3]>=impMag)
             if len(kk)>0:                 
                 imp = plt.scatter(self.locs[kk,0],
                         self.locs[kk,1],
-                        (self.locs[kk,3]+2)*size_ratio*20,
-                        edgecolors ='black',
+                        (self.locs[kk,3]+2)*sizeRatio*20,
+                        edgeColors ='black',
                         facecolors='red',
                         marker='*',
                         alpha=1)
-                plt.legend([imp],[f"M$\geq${format(imp_mag,'4.1f')}"])
+                plt.legend([imp],[f"M$\geq${format(impMag,'4.1f')}"])
         
-        if add_section == True: # draw cross-section plot
+        if addSection == True: # draw cross-section plot
             a1lon,a1lat,b1lon,b1lat = loc_by_width(alonlat[0],
                                                    alonlat[1],
                                                    blonlat[0],
                                                    blonlat[1],
-                                                   width=section_width/2,
+                                                   width=secWidth/2,
                                                    direction="right")
             a2lon,a2lat,b2lon,b2lat = loc_by_width(alonlat[0],
                                                    alonlat[1],
                                                    blonlat[0],
                                                    blonlat[1],
-                                                   width=section_width/2,
+                                                   width=secWidth/2,
                                                    direction="left")
             plt.plot([a1lon,b1lon,b2lon,a2lon,a1lon],
                      [a1lat,b1lat,b2lat,a2lat,a1lat],
@@ -285,7 +285,7 @@ class Catalog():
         plt.ylabel("Latitude")
         plt.gca().set_aspect("equal")
 
-        if plt_show == True:
+        if pltShow == True:
             plt.show()
         
     def vplot(self,
@@ -488,7 +488,7 @@ class Catalog():
             reflon,reflat,refdep = refloc
         if reftime == None:
             reftime = self.first_time + np.min(self.relative_seconds)
-
+        '''
         for evid in self.keys:
             etime =self.dict[evid][4]
             elon = self.dict[evid][0]
@@ -504,7 +504,33 @@ class Catalog():
             else:
                 axs[0].scatter(diff_x,edep,s=(emag+2)*5,marker='o',color=cmap((diff_x-vmin)/(vmax-vmin)))
                 axs[1].scatter(diff_x,d3dist,s=(emag+2)*5,marker='o',color=cmap((diff_x-vmin)/(vmax-vmin)))
-    
+        '''
+        diff_xs = []
+        edeps = []
+        emags = []
+        d3dists = []
+        for evid in self.keys:                                                                                                                                                                                     
+            etime =self.dict[evid][4]
+            elon = self.dict[evid][0]
+            elat = self.dict[evid][1]
+            edep = self.dict[evid][2]
+            emag = self.dict[evid][3]
+            diff_x = (etime-reftime)/denominator
+            dist,_,_ = gps2dist_azimuth(elat,elon,reflat,reflon)
+            d3dist = np.sqrt((dist/1000)**2+(edep-refdep)**2)
+
+            diff_xs.append(diff_x)
+            edeps.append(edep)
+            emags.append(emag)
+            d3dists.append(d3dist)
+        emags = np.array(emags)
+        if cmap==None:
+            axs[0].scatter(diff_xs,edeps,s=(emags+2)*5,marker='o',c='k')
+            axs[1].scatter(diff_xs,d3dists,s=(emags+2)*5,marker='o',c='k')
+        else:
+            axs[0].scatter(diff_xs,edeps,s=(emags+2)*5,marker='o',color=cmap((diff_xs-vmin)/(vmax-vmin)))
+            axs[1].scatter(diff_xs,d3dists,s=(emags+2)*5,marker='o',color=cmap((diff_xs-vmin)/(vmax-vmin)))
+
         plt.tight_layout()
         if plt_show == True:
             plt.show()
@@ -816,11 +842,11 @@ class Catalog():
         self.dict_count_Mo = sum_count_Mo(self,starttime,endtime)
         write_sum_count_Mo(self.dict_count_Mo,outFile,mode)
 
-    def write_info(self,info_file="lon_lat_dep_mag_relative_days_time.txt",reftime=None,disp=False):
+    def write_info(self,fileName="lon_lat_dep_mag_relative_days_time.txt",reftime=None,disp=False):
         if reftime == None:
             reftime = self.first_time
         print("The reference time is: ",reftime)
-        f = open(info_file,'w')
+        f = open(fileName,'w')
         for key in self.keys:
             lon = self.dict[key][0]
             lat = self.dict[key][1]
@@ -832,13 +858,13 @@ class Catalog():
             _lon = format(lon,'11.5f')
             _lat = format(lat,'10.5f')
             _dep = format(dep,'7.2f')
-            _mag = format(mag,'4.1f')
-            _relative_days = format(relative_days,'9.3f')
+            _mag = format(mag,'5.1f')
+            _relative_days = format(relative_days,'14.8f')
             line = _key+_lon+_lat+_dep+_mag+_relative_days+" "+str(etime)
             f.write(line+"\n")
             if disp == True:
                 print(line)
-        print("Catalog information write into: ",info_file)
+        print("Catalog information write into: ",fileName)
         f.close()
 
     def cata2fdsn(self,author="Hardy",catalog="SC",
@@ -880,7 +906,7 @@ def hypoinv2Catalog(inv):
         _time = inv.dict_evid[key][0]
         etime = UTCDateTime.strptime(_time,"%Y%m%d%H%M%S%f")
         inv_dict[key].append(etime)
-    inv_cata = Catalog(locfile=None)
+    inv_cata = Catalog(locFile=None)
     inv_cata.dict = inv_dict
     inv_cata.init()
     return inv_cata

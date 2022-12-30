@@ -17,9 +17,10 @@ from seisloc.geopara import WYpara
 from tqdm import tqdm
 
 
-def arc2cnv(arc_file,mag_threshold=-9,qty_limit=None):
+def arc2cnv(arc_file,mag_threshold=-9,minAz=360,qty_limit=None):
     """
     convert y2000 archieve file into velest format file
+    minAz: minium azimuth angle
     """
     count = 0
     cont = []    # Save the content of the phase file
@@ -37,6 +38,7 @@ def arc2cnv(arc_file,mag_threshold=-9,qty_limit=None):
             e_lat = int(line[16:18])+int(line[19:23])*0.01/60
             e_lon = int(line[23:26])+int(line[27:31])*0.01/60
             e_dep = int(line[31:36])*0.01
+            az = int(line[42:45])
             record_status = True
             try:
                 if len(line) < 126:
@@ -48,6 +50,8 @@ def arc2cnv(arc_file,mag_threshold=-9,qty_limit=None):
             if e_mag<mag_threshold:
                 record_status=False
             if e_dep==0:                # no zero depth for VELEST
+                record_status=False
+            if az > minAz:
                 record_status=False
             if qty_limit!=None and count >= qty_limit:
                 record_status = False
@@ -88,7 +92,7 @@ def arc2cnv(arc_file,mag_threshold=-9,qty_limit=None):
                 diff_time = phs_time - e_time
             pha_record = sta.ljust(5," ")+pha+"1"+format(diff_time,'6.2f')
             out_dict[e_label]["phase"].append(pha_record)
-    print(f"# Total {count} events!")
+    print(f"# Total {count} events! This is the value for the parameter 'neqs' in Velest!")
     cnv_file = arc_file+".cnv"
     f = open(cnv_file,'w')
     for key in out_dict.keys():      # Loop for each event
@@ -677,6 +681,7 @@ def real2arc(inFile,
                  different event ids to avoid event id confliction
         
     """
+    inFile = os.path.abspath(inFile)
     if len(boundCond) == 0:
         boundFilt=False
     elif len(boundCond) == 4:
@@ -772,4 +777,5 @@ def real2arc(inFile,
                     format(phaSec*100,">5.0f")+"ES "+str(weightCode)+format(res*100,">4.0f")+"\n")
     if loopId != startId:
         f.write(format(loopId,">72d")+"\n")
+    print(f"{loopId - startId} events after conversion!")
     f.close()

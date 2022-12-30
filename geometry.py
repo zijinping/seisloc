@@ -658,7 +658,7 @@ def cata_projection_GMT(cata,blon,blat,elon,elat,_widths='-3/3'):
     print("Check GMT version: ",end = ' ')
     if os.system("gmt --version") != 0:   # gmt not installed
         raise Exception("GMT not installed!")
-    cata.write_info(info_file="tmp_cata.txt")
+    cata.write_info(fileName="tmp_cata.txt")
     rdName = np.random.randint(100)
     cmd=f'blon={blon}\n'
     cmd+=f'blat={blat}\n'

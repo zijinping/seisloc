@@ -38,6 +38,9 @@ def loadEQTphases(df):
     return pdict,sdict
 
 def writeREALpicks(net,sta,pdict,sdict,pickPath):
+    """
+    pdict,sdict in format of "YYYYMMDD"
+    """
     for _day in pdict.keys():
         dayPath = os.path.join(pickPath,_day)
         if not os.path.exists(dayPath):
@@ -47,7 +50,7 @@ def writeREALpicks(net,sta,pdict,sdict,pickPath):
         for record in pdict[_day]:
             psecs = record[0]
             pprob = record[1]
-            fp.write(f"{format(psecs,'.2f')} {format(pprob,'4.2f')} 0\n")
+            fp.write(f"{format(psecs,'.3f')} {format(pprob,'4.2f')} 0\n")
         fp.close()
     for _day in sdict.keys():
         dayPath = os.path.join(pickPath,_day)
@@ -58,7 +61,7 @@ def writeREALpicks(net,sta,pdict,sdict,pickPath):
         for record in sdict[_day]:
             ssecs = record[0]
             sprob = record[1]
-            fs.write(f"{format(ssecs,'2.2f')} {format(sprob,'4.2f')} 0\n")
+            fs.write(f"{format(ssecs,'.3f')} {format(sprob,'4.2f')} 0\n")
         fs.close()
 
 def runREAL(workdir):

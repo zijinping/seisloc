@@ -51,17 +51,17 @@ def invmod2vel(out_file,vp_file,vs_file="",ps_ratio=1.73,vpdamp=1,vsdamp=1):
         vp_vel,vp_lay = map(float,cont[i].split())
         vp_vels.append(vp_vel)
         vp_lays.append(vp_lay)
-    if vs_file != "":
+    if vs_file =="":
+        vs_lays = vp_lays.copy()
+        for vp_vel in vp_vels:
+            vs_vels.append(vp_vel/ps_ratio)
+    else:
         with open(vs_file,'r') as f:
             cont = f.readlines()
         for i in range(1,len(cont)):             # Start from the second line
             vs_vel,vs_lay = map(float,cont[i].split())
-            vs_vels.append(vp_vel)
-            vs_lays.append(vp_lay)
-    else:
-        vs_lays = vp_lays.copy()
-        for vp_vel in vp_vels:
-            vs_vels.append(vp_vel/ps_ratio)
+            vs_vels.append(vs_vel)
+            vs_lays.append(vs_lay)
 
     f = open(out_file,'w')
     f.write("Velocity model from HYPOINVERSE\n")

@@ -11,10 +11,11 @@ class WYpara():
     '''
     This class reads parameters in "wy.para", which contains parameters for GMT plot.
     '''
-    def __init__(self,para_file="/home/jinping/Dropbox/Weiyuan_share/wy.para",workDir="/home/jinping/Dropbox/Weiyuan_share",mode='normal'):
+    def __init__(self,paraFile="wy.para",workDir="/home/jinping/Dropbox/Weiyuan_share",mode='normal'):
         self.dict={}
         self.dict['workDir']=workDir
-        with open(para_file) as f:
+        paraPth = os.path.join(workDir,paraFile)
+        with open(paraPth) as f:
             lines = f.readlines()
             for line in lines:
                 line = line.rstrip()
@@ -23,7 +24,7 @@ class WYpara():
                 if line[:2]=="#=":                      # after this are functions
                     break
                 if len(line)==0 or line[0]=='#' or \
-                   re.split(" ",line)[0] in ["gmt","if","","elif","then","fi"]: # ignore comment lines, gmt set lines, and shell related lines
+                   re.split(" ",line)[0] in ["gmt","if","","elif","then","fi",""]: # ignore comment lines, gmt set lines, and shell related lines
                     continue
                 content = re.split(" +",line.rstrip())[0]
                 para,info = re.split("=",content)
@@ -123,6 +124,8 @@ class WYpara():
         with open(self.dict['wells'],'r') as f:
             for line in f:
                 line = line.rstrip()
+                if len(line)==0:
+                    continue
                 if line[0]=="#":
                     continue
                 _lon,_lat,name,marker = re.split(" +",line)[:4]

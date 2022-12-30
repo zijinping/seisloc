@@ -1,5 +1,9 @@
 import obspy
+from obspy import UTCDateTime
+from scipy import interpolate
 import numpy as np
+import os
+from seisloc.utils import month_day
 
 def aligned_sac_datas(tr1,tr2,scc_dt,tb,te,marker='t0'):
     """
@@ -34,3 +38,41 @@ def aligned_sac_datas(tr1,tr2,scc_dt,tb,te,marker='t0'):
     tr2.detrend("linear")
 
     return tr1.data,tr2.data
+
+def sac_interpolation(insacPth,outsacPth,factor=10):
+    """
+    Interpolate waveform data using the quadratic fitting method provided by scipy.interpolate.interp1d module
+    """
+    insacPth = os.path.abspath(insacPth)
+    st = obspy.read(insacPth)
+    data = st[0].data
+    delta = st[0].stats.delta
+    xs = np.arange(len(data))
+    f = interpolate.interp1d(xs,data,kind='quadratic')
+    
+    deltaNew = delta/factor
+    ixs = np.arange((len(data)-1)*factor+1)*1/factor
+    dataInterp = f(ixs)
+    stInterp = st.copy()
+    stInterp[0].data = dataInterp
+    stInterp[0].stats.delta = deltaNew
+    stInterp[0].write(outsacPth,format="SAC")
+    
+def read_sac_ref_time(tr):
+    """
+    Read and return reference time of a sac file in obspy.UTCDateTime format.
+
+    Parameter
+    --------
+    tr: Trace object of obspy
+    """
+
+    nzyear = tr.stats.sac.nzyear
+    nzjday = tr.stats.sac.nzjday
+    nzhour = tr.stats.sac.nzhour
+    nzmin = tr.stats.sac.nzmin
+    nzsec = tr.stats.sac.nzsec
+    nzmsec = tr.stats.sac.nzmsec*0.001
+    year,month,day = month_day(nzyear,nzjday)
+    sac_ref_time = UTCDateTime(year,month,day,nzhour,nzmin,nzsec)+nzmsec
+    return sac_ref_time

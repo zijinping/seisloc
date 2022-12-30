@@ -189,8 +189,8 @@ def trimTeleWf(teleFile,wfRoot,pBefore=50,sAfter=50,mode="normal"):
             st=get_st(net,sta,startTime,endTime,wfFolder,pad=True)
         if mode == "SC":
             st=get_st_SC(net,sta,startTime,endTime,wfFolder,pad=True)
+        st = st.select(component="*Z")                # Use Z component
         if len(st) != 0:                                  # len(st)==0 means no waveform
-            st = st.select(component="*Z")                # Use Z component
             stsum.append(st[0])
     stsum.write(os.path.join(teleFile[:-5]+".mseed"))
 
