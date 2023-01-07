@@ -22,6 +22,8 @@ from numba import cuda
 from distutils.sysconfig import get_python_lib
 import matplotlib.pyplot as plt
 
+
+
 def add_path():
     """
     Add current path to the active python library
@@ -69,7 +71,8 @@ def init_logger(log_file,file_level=logging.DEBUG,stream_level=logging.INFO):
         stream_level: level for stream writing
     '''
     dirPth = os.path.dirname(log_file)
-    if dirPth!=" " and not os.path.exists(dirPth):
+    print(dirPth)
+    if dirPth!="" and not os.path.exists(dirPth):
         os.mkdir(dirPth)
         
     logger = logging.getLogger()

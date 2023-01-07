@@ -15,117 +15,113 @@ from seisloc.dd import loadDD
 import time
 from seisloc.geopara import WYpara
 from tqdm import tqdm
+from seisloc.io import load_y2000
+#read_y2000_event_line,read_y2000_phase_line,
 
+def write_cnv_file(cnvFile,arc,staChrLen=6):
+    f = open(cnvFile,'w')
+    for evstr in arc.keys():      # Loop for each event
+        evla = arc[evstr]["evla"]
+        evlo = arc[evstr]["evlo"]
+        evdp = arc[evstr]["evdp"]
+        emag = arc[evstr]["emag"]
+        maxStaAzGap = arc[evstr]['maxStaAzGap']
+        
+        _phases = []
+        for net,sta,phsType,travTime,res,weightCode in arc[evstr]["phase"]:
+            phaRecord = sta.ljust(staChrLen," ")+phsType+str(weightCode)+format(travTime,'6.2f')
+            _phases.append(phaRecord)
+        evid = arc[evstr]["evid"]
+        part1 = evstr[2:8]+" "+evstr[8:12]+" "+evstr[12:14]+"."+evstr[14:16]+" "
+        part2 = format(evla,"7.4f")+"N"+" "+format(evlo,"8.4f")+"E"+" "
+        part3 = format(evdp,"7.2f")+"  "+format(emag,"5.2f")
+        
+        f.write(part1+part2+part3)
+        i = 0
+        for _phase in _phases:
+            if i%6==0:
+                f.write("\n")
+            f.write(_phase)
+            i=i+1
+        tmp = i%6
+        if tmp>0:
+            f.write((6-tmp)*(8+staChrLen)*" "+"\n") # add space to fill line
+        elif tmp==0:
+            f.write("\n")
+        if staChrLen==6:
+            f.write("    \n")
+        else:
+            f.write(f"   {str(evid).zfill(6)}\n")
+    f.write("9999")              # indicates end of file for VELEST
+    f.close()
 
-def arc2cnv(arc_file,mag_threshold=-9,minAz=360,qty_limit=None):
+def write_sel_arc(fileName,arc):
+    f = open(fileName,'w')
+    for evstr in arc.keys():
+        for line in arc[evstr]["lines"]:
+            f.write(line+"\n")
+    f.close()    
+
+def read_y2000_event_line(line):
+    evstr = line[:16]
+    etime = UTCDateTime.strptime(evstr,'%Y%m%d%H%M%S%f')
+    evla = int(line[16:18])+int(line[19:23])*0.01/60
+    evlo = int(line[23:26])+int(line[27:31])*0.01/60
+    evdp = int(line[31:36])*0.01
+    emag = read_y2000_event_line_mag(line)
+    maxStaAzGap = int(line[42:45])
+    
+    return evstr,etime,evlo,evla,evdp,emag,maxStaAzGap
+
+def read_y2000_phase_line(line):
+    sta = re.split(" +",line[:5])[0]
+    net = line[5:7]
+    phsTimeMinute= UTCDateTime.strptime(line[17:29],"%Y%m%d%H%M")
+    if line[14]=="P" and line[47]==" ":
+        phsType = "P"
+        _secInt = line[29:32]; _secDecimal = line[32:34]
+        res = int(line[34:38])*0.01
+    elif line[14]==" " and line[47]=="S":
+        phsType = "S"
+        _secInt = line[41:44]; _secDecimal = line[44:46]
+        res =int(line[50:54])*0.01
+    else:
+        raise Exception("Error phase type: line[14] '{line[14]}' and line[47] '{line[47]}'")
+        
+    if _secInt == "   ": _secInt = "0"
+    if _secDecimal == "  ": _secDecimal = "0"
+    phsTime = phsTimeMinute+int(_secInt)+int(_secDecimal)*0.01
+    
+    return sta,net,phsType,phsTime,res
+
+def arc2cnv(arcFile,magThred=-9,minAz=360,qty_limit=None,staChrLen=5):
     """
     convert y2000 archieve file into velest format file
     minAz: minium azimuth angle
     """
     count = 0
-    cont = []    # Save the content of the phase file
-    cont_sel = [] # content selected
-    out_dict = {}     # output content
-    with open(arc_file,'r') as f:
-        for line in f:
-            cont.append(line.rstrip())
-    f.close()
-
-    for line in tqdm(cont):
-        if re.match("\d+",line[:6]):    # line start with digit is summary line
-            e_label = line[:16]
-            e_time = UTCDateTime.strptime(line[:12],'%Y%m%d%H%M')+int(line[12:16])*0.01
-            e_lat = int(line[16:18])+int(line[19:23])*0.01/60
-            e_lon = int(line[23:26])+int(line[27:31])*0.01/60
-            e_dep = int(line[31:36])*0.01
-            az = int(line[42:45])
-            record_status = True
-            try:
-                if len(line) < 126:
-                    e_mag = int(line[36:39])*0.01
-                else:
-                    e_mag = int(line[123:126])*0.01
-            except:
-                e_mag = 0
-            if e_mag<mag_threshold:
-                record_status=False
-            if e_dep==0:                # no zero depth for VELEST
-                record_status=False
-            if az > minAz:
-                record_status=False
-            if qty_limit!=None and count >= qty_limit:
-                record_status = False
-
-            if record_status == False:
-                continue
-            
-            cont_sel.append(line)
-            count += 1
-            out_dict[e_label] = {}    # dict with event line str as key
-            out_dict[e_label]["e_time"]=e_time
-            out_dict[e_label]["e_lat"]=e_lat
-            out_dict[e_label]["e_lon"]=e_lon
-            out_dict[e_label]["e_dep"]=e_dep
-            out_dict[e_label]["e_mag"]=e_mag
-            out_dict[e_label]["phase"]=[]   # array to store phases
-        elif line[:6]=='      ':        # The last line indicate the evid
-            if record_status==False:
-                continue
-            cont_sel.append(line)
-            out_dict[e_label]["evid"]=int(line[63:72])
-        else:                           # Station phase line
-            if record_status==False:
-                continue
-            cont_sel.append(line)
-            sta = line[:5].split()
-            sta = sta[0]
-            net = line[5:7]
-            if line[14] == "P":
-                pha = "P"
-                phs_time = UTCDateTime.strptime(line[17:29],"%Y%m%d%H%M")+\
-                            int(line[30:34])*0.01
-                diff_time = phs_time - e_time
-            elif line[47] == "S":
-                pha = "S"
-                phs_time = UTCDateTime.strptime(line[17:29],"%Y%m%d%H%M")+\
-                            int(line[42:46])*0.01
-                diff_time = phs_time - e_time
-            pha_record = sta.ljust(5," ")+pha+"1"+format(diff_time,'6.2f')
-            out_dict[e_label]["phase"].append(pha_record)
-    print(f"# Total {count} events! This is the value for the parameter 'neqs' in Velest!")
-    cnv_file = arc_file+".cnv"
-    f = open(cnv_file,'w')
-    for key in out_dict.keys():      # Loop for each event
-        e_lat = out_dict[key]["e_lat"]
-        e_lon = out_dict[key]["e_lon"]
-        e_dep = out_dict[key]["e_dep"]
-        e_mag = out_dict[key]["e_mag"]
-        phases = out_dict[key]["phase"]
-        evid = out_dict[key]["evid"]
-        part1 = key[2:8]+" "+key[8:12]+" "+key[12:14]+"."+key[14:16]+" "
-        part2 = format(e_lat,"7.4f")+"N"+" "+format(e_lon,"8.4f")+"E"+" "
-        part3 = format(e_dep,"7.2f")+"  "+format(e_mag,"5.2f")
-        
-        f.write(part1+part2+part3)
-        i = 0
-        for phase in phases:
-            if i%6==0:
-                f.write("\n")
-            f.write(phase)
-            i=i+1
-        tmp = i%6
-        if tmp>0:
-            f.write((6-tmp)*13*" "+"\n") # add space to fill line
-        elif tmp==0:
-            f.write("\n")
-        f.write(f"   {str(evid).zfill(6)}\n")
-    f.write("9999")              # indicates end of file for VELEST
-    f.close()
-
-    f = open(arc_file+".sel",'w')
-    for line in cont_sel:
-        f.write(line+"\n")
-    f.close()
+    arc = load_y2000(arcFile)
+    arcSel = arc.copy()
+    for evstr in arcSel.keys():
+        evla = arc[evstr]["evla"]
+        evlo = arc[evstr]["evlo"]
+        evdp = arc[evstr]["evdp"]
+        emag = arc[evstr]["emag"]
+        maxStaAzGap = arc[evstr]['maxStaAzGap']
+        #--------- quality control ------------------------------
+        # no zero depth for VELEST
+        if emag<magThred or evdp==0 or maxStaAzGap > minAz or\
+        (qty_limit!=None and count >= qty_limit):
+            del arcSel[evstr]
+            continue
+        count += 1
+    
+    cnvFile = arcFile+".cnv"
+    write_cnv_file(cnvFile,arcSel)
+    print(f"# {cnvFile} saved! Total {count} events! This is the value for the parameter 'neqs' in Velest!")
+    arcSelFile = arcFile+".sel"
+    write_sel_arc(arcSelFile,arcSel)
+    print(f"# {arcSelFile} saved!")
 
 def dd2fdsn(in_file,subset=None):
     '''
