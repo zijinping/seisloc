@@ -25,7 +25,7 @@ import subprocess
 import time
 import pickle
 from seisloc.geometry import in_rectangle,loc_by_width
-from seisloc.io import read_y2000_event_line,read_y2000_phase_line
+from seisloc.phase_io import read_y2000_event_line,read_y2000_phase_line
 
 
 

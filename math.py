@@ -15,6 +15,8 @@ def lsfit(G,d,W=1,full=False):
     if isinstance(W,int):
         _W = np.ones(rows)*W
         W = np.diag(_W)
+    if isinstance(W,list):
+        W = np.diag(W)
     WG = np.matmul(W,G)
     GTWG = np.matmul(G.T,WG)
     GTW = np.matmul(G.T,W)

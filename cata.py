@@ -252,7 +252,7 @@ class Catalog():
                 imp = plt.scatter(self.locs[kk,0],
                         self.locs[kk,1],
                         (self.locs[kk,3]+2)*sizeRatio*20,
-                        edgeColors ='black',
+                        edgecolors ='black',
                         facecolors='red',
                         marker='*',
                         alpha=1)

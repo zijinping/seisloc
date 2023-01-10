@@ -8,9 +8,6 @@
 #            doi:10.1785/0120090038
 #   History: 
 #       2021-01-25 Initial coding
-#
-#     Usage: python scc.py [-Ccc] [-E] [-Mn] [-O] [-Tlength] [-Wt1/t2[/maxShift]]
-#            -C: cross-correlation threshold (default = 0.7)
 #-----------------------------------------------------------------------------
 
 import obspy
@@ -28,6 +25,7 @@ from numba import jit
 from numba.typed import List
 from tqdm import tqdm
 from seisloc.hypoinv import load_sum_evid,load_sum_evstr
+import multiprocessing as mp
 
 def wf_scc(tmplt_st,sta_st,tb,te,maxShift,marker='t0',bestO=False):
     """
@@ -158,67 +156,6 @@ def data_scc(tmplt_data,st_data,ncom):
         j=j+1
     return ccmax,aamax,i0,cc_list
 
-def gen_scc_input(src_root,tar_root,freqmin,freqmax):
-    """
-    Prepare the sliding window cross-correlation input files
-    Parameters:
-      src_root: The source data folder
-      tar_root: The target output folder
-    """
-    if not os.path.exists(tar_root):
-        os.mkdir(tar_root)
-    arr_folder = os.path.join(tar_root,'arr_files')
-    try:
-        shutil.rmtree(arr_folder)
-    except:
-        pass
-    os.mkdir(arr_folder)
-    try:
-        shutil.rmtree(os.path.join(tar_root,'eve_wf_bp'))
-    except:
-        pass
-    os.mkdir(os.path.join(tar_root,'eve_wf_bp'))
-    _days = os.listdir(src_root)
-    _days.sort()
-    for _day in _days:
-        os.mkdir(os.path.join(tar_root,'eve_wf_bp',_day))
-        _eves = os.listdir(os.path.join(src_root,_day))
-        _eves.sort()
-        for _eve in _eves:
-            _eve_folder = os.path.join(tar_root,'eve_wf_bp',_day,_eve)
-            if not os.path.exists(_eve_folder):
-                os.mkdir(_eve_folder)
-            for sac in os.listdir(os.path.join(src_root,_day,_eve)):
-                st = obspy.read(os.path.join(src_root,_day,_eve,sac))
-                chn = st[0].stats.channel
-                sta = st[0].stats.station
-                st.detrend("linear"); st.detrend("constant")
-                st.filter("bandpass",freqmin=freqmin,freqmax=freqmax,zerophase=True)
-                if chn[-1]=="N":
-                    st[0].write(os.path.join(_eve_folder,f"{sta}.r"),format="SAC")
-                if chn[-1]=="E":
-                    st[0].write(os.path.join(_eve_folder,f"{sta}.t"),format="SAC")
-                if chn[-1]=="Z":
-                    st[0].write(os.path.join(_eve_folder,f"{sta}.z"),format="SAC")
-                    try:
-                        a = st[0].stats.sac.a
-                        arr_file = os.path.join(arr_folder,f"{sta}_P.arr")
-                        with open(arr_file,'a') as f:
-                            f.write(os.path.join("eve_wf_bp",_day,_eve,sta+".z"))
-                            f.write(f"  {format(a,'5.2f')}  1\n")
-                        f.close()
-                    except:
-                        pass
-                    try:
-                        t0 = st[0].stats.sac.t0
-                        arr_file = os.path.join(arr_folder,f"{sta}_S.arr")
-                        with open(arr_file,'a') as f:
-                            f.write(os.path.join("eve_wf_bp",_day,_eve,sta+".z"))
-                            f.write(f"  {format(t0,'5.2f')}  1\n")
-                        f.close()
-                    except:
-                        pass
-
 def gen_dtcc(netsta_list=None,sum_file="out.sum",work_dir="./",cc_threshold=0.7,min_link=4,max_dist=4):
     '''
     This function generate dt.cc.* files from the output of SCC results
@@ -337,3 +274,110 @@ def gen_dtcc(netsta_list=None,sum_file="out.sum",work_dir="./",cc_threshold=0.7,
             f.write(line)
     f.close()    
     print("<<< dt.cc files generated! <<<")
+
+
+
+
+def scc_input_load_arr(tarBase,markerP="P",markerS="S"):
+    """
+    Load P&S travel time from event waveforms
+    """
+    arrDict={}
+    _days = os.listdir(os.path.join(tarBase,'eve_wf_bp'))
+    _days.sort()
+    for _day in _days:
+        _eves = os.listdir(os.path.join(tarBase,'eve_wf_bp',_day))
+        _eves.sort()
+        for _eve in _eves:
+            _eveDir = os.path.join(tarBase,'eve_wf_bp',_day,_eve)
+            for sac in os.listdir(_eveDir):
+                if sac[-1]!='z':
+                    continue
+                sacPth = os.path.join(_eveDir,sac)
+                st = obspy.read(sacPth,headonly=True)
+                sta = st[0].stats.station
+                if hasattr(st[0].stats.sac,markerP):
+                    travTime = getattr(st[0].stats.sac,markerP)
+                    if f"{sta}_P" not in arrDict:
+                        arrDict[f"{sta}_P"] = []
+                    _str1 = os.path.join("eve_wf_bp",_day,_eve,sta+".z")
+                    _str2 = f"  {format(travTime,'5.2f')}  1\n"
+                    arrDict[f"{sta}_P"].append(_str1+_str2)
+                    
+                if hasattr(st[0].stats.sac,markerS):
+                    travTime = getattr(st[0].stats.sac,markerS)
+                    if f"{sta}_S" not in arrDict:
+                        arrDict[f"{sta}_S"] = []
+                    _str1 = os.path.join("eve_wf_bp",_day,_eve,sta+".z")
+                    _str2 = f"  {format(travTime,'5.2f')}  1\n"
+                    arrDict[f"{sta}_S"].append(_str1+_str2)
+    return arrDict
+
+def scc_input_write_arr(arrDir,arrDict):
+    for key in arrDict.keys():
+        arrFile = key+".arr"
+        arrFilePth = os.path.join(arrDir,arrFile)
+        with open(arrFilePth,'w') as f:
+            for line in arrDict[key]:
+                f.write(line)
+
+def scc_input_wf_bp(srcEveDir,tarEveDir,freqmin,freqmax,zerophase=True):
+    if not os.path.exists(tarEveDir):
+        os.mkdir(tarEveDir)
+    for sac in os.listdir(srcEveDir):
+        st = obspy.read(os.path.join(srcEveDir,sac))
+        chn = st[0].stats.channel
+        sta = st[0].stats.station
+        st.detrend("linear"); st.detrend("constant")
+        st.filter("bandpass",freqmin=freqmin,freqmax=freqmax,zerophase=True)
+        if chn[-1]=="N":
+            st[0].write(os.path.join(tarEveDir,f"{sta}.r"),format="SAC")
+        if chn[-1]=="E":
+            st[0].write(os.path.join(tarEveDir,f"{sta}.t"),format="SAC")
+        if chn[-1]=="Z":
+            st[0].write(os.path.join(tarEveDir,f"{sta}.z"),format="SAC")    
+    
+def scc_input(srcWfBase,tarBase,freqmin,freqmax,markerP="a",markerS="t0",parallel=False,parallelCores=10,zerophase=True):
+    """
+    Prepare the sliding window cross-correlation input files
+    Parameters:
+      srcWfBase: The source waveform folder
+      tarBase: The target multiprocessing project folder
+    """
+    if not os.path.exists(tarBase):
+        os.mkdir(tarBase)
+    arrDir = os.path.join(tarBase,'arr_files')
+    if os.path.exists(arrDir):
+        print(" arrDir: 'arr_files' exsited and will be removed!")
+        shutil.rmtree(arrDir)
+    os.mkdir(arrDir)
+    bpwfDir = os.path.join(tarBase,'eve_wf_bp')
+    if os.path.exists(bpwfDir):
+        print("bpwfDir: 'eve_wf_bp' exsited and will be removed!")
+        shutil.rmtree(os.path.join(tarBase,'eve_wf_bp'))
+    os.mkdir(bpwfDir)
+    _days = os.listdir(srcWfBase)
+    _days.sort()
+    for _day in _days:
+        os.mkdir(os.path.join(tarBase,'eve_wf_bp',_day))
+        _eves = os.listdir(os.path.join(srcWfBase,_day))
+        _eves.sort()
+        if parallel: pool = mp.Pool(processes=parallelCores)
+        for _eve in _eves:
+            srcEveDir = os.path.join(srcWfBase,_day,_eve)
+            if not os.path.isdir(srcEveDir):
+                continue
+            tarEveDir = os.path.join(tarBase,'eve_wf_bp',_day,_eve)
+            if parallel: pool.apply_async(scc_input_wf_bp,args=(srcEveDir,tarEveDir,freqmin,freqmax,zerophase))
+            else: scc_input_wf_bp(srcEveDir,tarEveDir,freqmin=freqmin,freqmax=freqmax,zerophase=zerophase)
+        if parallel: pool.close(); pool.join()
+      
+    print("Waveform bandpass finished!")
+#----------- Generate arr files ----------------------------------------    
+    print(">>> Now prepare arrival files")
+    print(">>> Loading arrivals from tarWfDir 'eve_bp_wf' ")
+    arrDict = scc_input_load_arr(tarBase,markerP=markerP,markerS=markerS)
+
+    print(">>> Writing arrival files ")
+    scc_input_write_arr(arrDir,arrDict)
+
