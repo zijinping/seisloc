@@ -18,9 +18,9 @@ from numpy import polyfit
 import glob
 
 
-def genTeleFiles( dataset_path,
-                    sta_file,
-                    min_mag,
+def gen_tele_files( datasetPth,
+                    staFile,
+                    minMag,
                     dist_range,
                     client_name = "IRIS",
                     taup_model="iasp91",
@@ -34,10 +34,10 @@ def genTeleFiles( dataset_path,
     Then calculates arrival times for stations and writes into files.
     
     Parameters:
-      dataset_path: the path of the dataset. The program will extract information
+      datasetPth: the path of the dataset. The program will extract information
                     of this dataset, including starttime and endtime
-          sta_file: station file for station longitude and latitude information
-           min_mag: minimum magnitude of tele-event for plot
+          staFile: station file for station longitude and latitude information
+           minMag: minimum magnitude of tele-event for plot
         dist_range: [d1,d2] in degree
        client_name: default "IRIS", check obspy.clients.fdsn.client.Client.__init__()
                      for detail
@@ -50,17 +50,17 @@ def genTeleFiles( dataset_path,
     if not os.path.exists(tele_dir):
         os.mkdir(tele_dir)
         logger.info("tele dir created.")
-    set_info = extract_set_info(dataset_path,sta_file)
+    set_info = extract_set_info(datasetPth,staFile)
     c_lon,c_lat = set_info["center"] 
     starttime = set_info['s_times'][0]   
     endtime = set_info['e_times'][-1]
     netstas = set_info["netstas"]
     
-    sta_dict = load_sta(sta_file)
+    sta_dict = load_sta(staFile)
     client=Client(client_name)
     event_list=client.get_events(starttime=starttime,
                                  endtime=endtime,
-                                 minmagnitude=min_mag)
+                                 minmagnitude=minMag)
     
     columns=["e_id","e_time","e_lon","e_lat","e_dep","e_dist","e_mag","e_mag_type"]
     df = pd.DataFrame(columns=columns)

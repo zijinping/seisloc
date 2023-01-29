@@ -76,3 +76,23 @@ def read_sac_ref_time(tr):
     year,month,day = month_day(nzyear,nzjday)
     sac_ref_time = UTCDateTime(year,month,day,nzhour,nzmin,nzsec)+nzmsec
     return sac_ref_time
+
+
+def get_tr_marker_idx(tr,marker='a'):
+    refTime = read_sac_ref_time(tr)
+    sp = tr.stats.sampling_rate
+    starttime = tr.stats.starttime
+    markerTime = refTime+tr.stats.sac[marker]
+    idx = int((markerTime - starttime)*sp)
+    return idx
+
+def get_tr_data(tr,idx,tb,te):
+    """
+    tb,te: negative/positive for waveform before/after the marker
+    
+    """
+    delta = tr.stats.delta
+    shift1 = int(tb/delta)
+    shift2 = int(te/delta)
+    data = tr.data[idx+shift1:idx+shift2]
+    return data
