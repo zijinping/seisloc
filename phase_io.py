@@ -82,6 +82,39 @@ def write_arc(fileName,arc):
             f.write(line+"\n")
     f.close()    
 
+def write_cnv(cnv,cnvFile="vel.cnv",staChrLen=6):
+    f = open(cnvFile,'w')
+    for evstr in cnv.keys():
+        evla = cnv[evstr]["evla"]
+        evlo = cnv[evstr]["evlo"]
+        evdp = cnv[evstr]["evdp"]
+        emag = cnv[evstr]["emag"]
+        rms = cnv[evstr]["rms"]
+        maxStaAzGap = cnv[evstr]["maxStaAzGap"]
+        part1 = evstr[2:8]+" "+evstr[8:12]+" "+evstr[12:14]+"."+evstr[14:16]+" "
+        part2 = format(evla,"7.4f")+"N"+" "+format(evlo,"8.4f")+"E"+" "
+        part3 = format(evdp,"7.2f")+"  "+format(emag,"5.2f")+" "
+        part4 = format(maxStaAzGap,'>6d')+" "+format(rms,'9.2f')
+        f.write(part1+part2+part3+part4)
+        i=0
+        for sta,phsType,travTime,weightCode in cnv[evstr]['phases']:
+            _phase=sta.ljust(staChrLen," ")+phsType+str(weightCode)+format(travTime,'6.2f')
+            if i%6==0:
+                f.write("\n")
+            f.write(_phase)
+            i=i+1
+        tmp = i%6
+        if tmp>0:
+            f.write((6-tmp)*(8+staChrLen)*" "+"\n") # add space to fill line
+        elif tmp==0:
+            f.write("\n")
+        if staChrLen==6:
+            f.write("    \n")
+        else:
+            f.write(f"   {str(evid).zfill(6)}\n")
+    f.write("9999")              # indicates end of file for VELEST
+    f.close()
+    
 def read_y2000_event_line_mag(line):
     try:
         if len(line) < 126:
@@ -264,7 +297,7 @@ def load_cnv(cnv_file="velout.cnv"):
                     cnv[evstr]['nsta'] += 1
                 cnv[evstr]['phases'].append([sta,phsType,travTime,weightCode])
     return cnv
-    
+
 def cnv2pha(cnvFile):
     cnv = load_cnv(cnvFile)
     f = open(cnvFile+".pha",'w')

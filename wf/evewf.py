@@ -6,9 +6,9 @@ from obspy.io.sac.sactrace import SACTrace
 import shutil
 import re
 import matplotlib.pyplot as plt
-from seisloc.utils import read_sac_ref_time,get_st
+from seisloc.utils import get_st
 from seisloc.geometry import spherical_dist
-from seisloc.hypoinv import load_y2000
+from seisloc.phase_io import load_y2000
 from seisloc.sta import load_sta
 import numpy as np
 from tqdm import tqdm
@@ -139,7 +139,8 @@ def get_e_time(tr):
     Applied to a sac trace. This function first read sac reference from from sac head.
     Then read o_value from the sac head. Return is the event time
     """
-    sac_ref_time = read_sac_ref_time(tr)    # In UTCDateTime format
+    sac = SACTrace.from_obspy_trace(tr)
+    sac_ref_time = sac.reftime    # In UTCDateTime format
     o_value = tr.stats.sac.o 
     event_time = sac_ref_time + o_value     # event origin time
     
@@ -244,7 +245,8 @@ def wf_dist_plot(st,
        
     for tr in st:            # Plot trace by trace
         sta = tr.stats.station
-        tr_ref_time = read_sac_ref_time(tr) 
+        sac = SACTrace.from_obspy.trace(tr)
+        tr_ref_time = sac.reftime
         tr_o_value = tr.stats.sac.o
         event_time = tr_ref_time + tr_o_value
         x_start = min_time-event_time
