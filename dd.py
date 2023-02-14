@@ -19,7 +19,9 @@ import copy
 from PIL import Image
 from seisloc.geometry import spherical_rotate
 from seisloc.utils import readfile,writefile
-#
+
+
+
 def load_PC(catalog="/home/zijinping/Desktop/projects/wy_eq/2018_2019_PC/2018_2019_hypoDD.reloc",
             start_evid=300000):
     """

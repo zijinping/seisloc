@@ -15,7 +15,7 @@ from seisloc.dd import loadDD
 import time
 from seisloc.geopara import WYpara
 from tqdm import tqdm
-from seisloc.phase_io import load_y2000,write_cnv_file,write_arc
+from seisloc.text_io import load_y2000,load_cnv,_write_cnv_file,write_arc
 
 
 def dd2fdsn(in_file,subset=None):
@@ -670,3 +670,56 @@ def real2arc(inFile,
         f.write(format(loopId,">72d")+"\n")
     print(f"{loopId - startId} events after conversion!")
     f.close()
+
+def arc2cnv(arcFile,magThred=-9,minAz=360,qty_limit=None,staChrLen=5):
+    """
+    convert y2000 archieve file into velest format file
+    minAz: minium azimuth angle
+    """
+    count = 0
+    arc = load_y2000(arcFile)
+    arcSel = arc.copy()
+    for evstr in arcSel.keys():
+        evla = arc[evstr]["evla"]
+        evlo = arc[evstr]["evlo"]
+        evdp = arc[evstr]["evdp"]
+        emag = arc[evstr]["emag"]
+        maxStaAzGap = arc[evstr]['maxStaAzGap']
+        #--------- quality control ------------------------------
+        # no zero depth for VELEST
+        if emag<magThred or evdp==0 or maxStaAzGap > minAz or\
+        (qty_limit!=None and count >= qty_limit):
+            del arcSel[evstr]
+            continue
+        count += 1
+    
+    cnvFile = arcFile+".cnv"
+    _write_cnv_file(cnvFile,arcSel,staChrLen=staChrLen)
+    print(f"# {cnvFile} saved! Total {count} events! This is the value for the parameter 'neqs' in Velest!")
+    arcSelFile = arcFile+".sel"
+    write_arc(arcSelFile,arcSel)
+    print(f"# {arcSelFile} saved!")
+    
+def cnv2pha(cnvFile):
+    cnv = load_cnv(cnvFile)
+    f = open(cnvFile+".pha",'w')
+    for evstr in cnv.keys():
+        etime = cnv[evstr]['etime']
+        evlo = cnv[evstr]['evlo']
+        evla = cnv[evstr]['evla']
+        evdp = cnv[evstr]['evdp']
+        emag = cnv[evstr]['emag']
+        rms = cnv[evstr]['rms']
+        evid = cnv[evstr]['evid']
+        errh = 0
+        errz = 0
+        secs = etime.second+etime.microsecond/1000000
+        _str1 = f"# "+etime.strftime("%Y %m %d %H %M ")+format(secs,'5.2f')
+        _str2 = f" {format(evla,'8.4f')} {format(evlo,'9.4f')} {format(evdp,'7.2f')} {format(emag,'5.2f')}"
+        _str3 = f" {format(errh,'4.2f')} {format(errz,'4.2f')} {format(rms,'4.2f')} {format(evid,'9d')}"
+        print(_str1+_str2+_str3)
+        f.write(_str1+_str2+_str3+"\n")
+        for sta,phsType,travTime,weightCode in cnv[evstr]['phases']:
+            weightValue = 1-weightCode/4
+            print(f"{format(sta,'<5s')} {format(travTime,'10.3f')} {format(weightValue,'7.3f')}   {phsType}")
+            f.write(f"{format(sta,'<5s')} {format(travTime,'10.3f')} {format(weightValue,'7.3f')}   {phsType}"+"\n")

@@ -25,11 +25,11 @@ import subprocess
 import time
 import pickle
 from seisloc.geometry import in_rectangle,loc_by_width
-from seisloc.phase_io import read_y2000_event_line,read_y2000_phase_line
+from seisloc.text_io import read_y2000_event_line,read_y2000_phase_line
 
 
 
-def invmod2vel(out_file,vp_file,vs_file="",ps_ratio=1.73,vpdamp=1,vsdamp=1):
+def invmod2vel(out_file,vp_file,vs_file="",ps_ratio=1.73,vpdamp=1,vsdamp=1,headLine="Velocity model from HYPOINVERSE"):
     """
     Convert hypoinverse velocity model to the velest velocity model
 
@@ -66,7 +66,7 @@ def invmod2vel(out_file,vp_file,vs_file="",ps_ratio=1.73,vpdamp=1,vsdamp=1):
             vs_lays.append(vs_lay)
 
     f = open(out_file,'w')
-    f.write("Velocity model from HYPOINVERSE\n")
+    f.write(headLine+"\n")
     f.write(str(len(vp_vels))+"\n")
     for i in range(len(vp_vels)):
         f.write(format(vp_vels[i],'5.2f'))

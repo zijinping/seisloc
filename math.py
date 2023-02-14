@@ -27,7 +27,9 @@ def lsfit(G,d,W=1,full=False):
     dpre = np.matmul(WG,m)
     e = dpre - d
     E = np.matmul(e.T,e)
-    sigmad2 = E/(len(d)-len(m))
+    freedomDeg=len(d) - len(m)
+    if freedomDeg == 0: freedomDeg = 1
+    sigmad2 = E/freedomDeg
 
     GTWG_invGTW = np.matmul(GTWG_inv,GTW)
 
