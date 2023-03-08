@@ -21,8 +21,8 @@ import pickle
 from numba import cuda
 from distutils.sysconfig import get_python_lib
 import matplotlib.pyplot as plt
-
-
+import time
+import json
 
 def add_path():
     """
@@ -71,7 +71,6 @@ def init_logger(log_file,file_level=logging.DEBUG,stream_level=logging.INFO):
         stream_level: level for stream writing
     '''
     dirPth = os.path.dirname(log_file)
-    print(dirPth)
     if dirPth!="" and not os.path.exists(dirPth):
         os.mkdir(dirPth)
         
@@ -88,10 +87,10 @@ def init_logger(log_file,file_level=logging.DEBUG,stream_level=logging.INFO):
     logger.addHandler(fh)
 
 
-def extract_set_info(pth,sta_file,depth=2):
+def extract_set_info(wfBase,sta_file,depth=2,readExisting=True):
     """
     Parameters:
-        pth: path for the folder to work on
+        wfBase: path for the folder to work on
         depth: 1 or 2, 1 means pth/files, 2 means pth/folder/files
         
     Return:
@@ -104,78 +103,67 @@ def extract_set_info(pth,sta_file,depth=2):
     """
     logger = logging.getLogger()
     logger.info("Extract_set_info program launched...")
-    parent_path = os.path.split(pth)[0]
-    if parent_path=="":
-        parent_path="."
-    if os.path.exists(os.path.join(parent_path,'setinfo.pkl')):
-        f = open(os.path.join(parent_path,'setinfo.pkl'),'rb')
-        setinfo = pickle.load(f)
-        logger.info("Read in the existed setinfo.pkl and return")
+    wfAbsBase = os.path.abspath(wfBase)
+    prjBase = os.path.dirname(wfAbsBase)
+    if os.path.exists(os.path.join(prjBase,"setinfo.json")) and readExisting==True:
+        with open(os.path.join(prjBase,"setinfo.json"),'r') as f:
+            setinfo = json.load(f)
         return setinfo
 
-    setinfo = {}
     sta_dict = load_sta(sta_file)
-    s_times = []
-    e_times = []
-    netstas = []
-    stalons = []
-    stalats = []
+    setinfo = {}
+    setinfo["startTime"]=""
+    setinfo["endTime"]=""
+    setinfo["center"] = []
+    setinfo["staLonLats"] = []
+    setinfo["availYearDays"] = {}
+    staLonLats = []
     logger.debug(f"file system depth is {depth}")
     availdays = []
-    if depth == 2:                    # strcture: pth/folder/seis_file
-        for item in os.listdir(pth):
-            if os.path.isdir(os.path.join(pth,item)):
-                logging.debug(f"Process dir {item}")
-                juldays = []
-                for file in os.listdir(os.path.join(pth,item)):
-                    if file == "availdays.txt":
-                        juldays = []
-                        f = open(os.path.join(pth,item,file),'r')
-                        for line in f:
-                            line = line.rstrip()
-                            _year,_julday=line.split()
-                            year = int(_year)
-                            julday = int(_julday)
-                            juldays.append(julday)
-                    try:
-                        st = obspy.read(os.path.join(pth,item,file),headonly=True)
-                        for tr in st:
-                            s_julday = tr.stats.starttime.julday
-                            e_julday = tr.stats.endtime.julday
-                            if s_julday not in juldays:
-                                juldays.append(s_julday)
-                            if e_julday not in juldays:
-                                juldays.append(e_julday)
-                            net = tr.stats.network
-                            sta = tr.stats.station
-                            netsta = net+sta
-                            if netsta not in netstas:
-                                netstas.append(netsta)
-                                stalons.append(sta_dict[net][sta][0])
-                                stalats.append(sta_dict[net][sta][1])      
-                            if tr.stats.starttime not in s_times:
-                                s_times.append(tr.stats.starttime)
-                            if tr.stats.endtime not in e_times:
-                                e_times.append(tr.stats.endtime)
-                    except:           # not seis file
-                        pass
-            else:
+    if depth == 2:                    # strcture: wfBase/staName/seis_file
+        for staName in os.listdir(wfBase):
+            staDir = os.path.join(wfBase,staName)
+            if not os.path.isdir(staDir):
                 continue
-            if len(juldays) > 0:
-                availdays.append(sorted(juldays))
-    print(availdays)
-    if len(availdays)>0 and len(availdays)!= len(netstas):
-        raise Exception("len(availdays) not equal len(netstas)")
-    setinfo["availdays"] = availdays
-    setinfo["s_times"] = sorted(s_times)
-    setinfo["e_times"] = sorted(e_times)
-    setinfo["stalons"] = stalons
-    setinfo["stalats"] = stalats
-    setinfo["netstas"] = netstas
-    setinfo["center"] = [np.mean(stalons),np.mean(stalats)]
-    f = open(os.path.join(parent_path,"setinfo.pkl"),'wb')
-    pickle.dump(setinfo,f)
-    f.close()
+            logging.debug(f"Process dir {staDir}")
+            juldays = []
+            if not "_wf_files_summary.csv" in os.listdir(staDir):
+                print("gen_wf_files_summary launched!")
+                gen_wf_files_summary(staDir)
+            wfSumCsv = os.path.join(staDir,"_wf_files_summary.csv")
+            if not "wfSumAll" in locals():
+                wfSumAll = pd.read_csv(wfSumCsv)
+            else:
+                _wfSum = pd.read_csv(wfSumCsv)
+                wfSumAll=wfSumAll.append(_wfSum)
+        for i,row in wfSumAll.iterrows():
+            net = row.net
+            sta = row.sta
+            chn = row.chn
+            netsta = net+sta
+            if netsta not in setinfo['availYearDays'].keys():
+                setinfo['availYearDays'][netsta]={}
+                staLonLats.append([sta_dict[net][sta][0],sta_dict[net][sta][1]])
+            yr = row.year
+            if yr not in setinfo['availYearDays'][netsta].keys():
+                setinfo['availYearDays'][netsta][yr] = []
+            julDays = [int(_str) for _str in row.julDays[1:-1].split()]
+            for julDay in julDays:
+                if julDay not in setinfo['availYearDays'][netsta][yr]:
+                    setinfo['availYearDays'][netsta][yr].append(julDay)
+                    
+
+    setinfo["staLonLats"] = staLonLats
+    setinfo["center"] = [list(np.mean(np.array(staLonLats),axis=0))]
+    wfSumAllSort = wfSumAll.sort_values(by='startTime')
+    setinfo["startTime"] = wfSumAllSort.iloc[0].startTime
+    wfSumAllSort = wfSumAll.sort_values(by='endTime')
+    setinfo['endTime'] = wfSumAllSort.iloc[-1].endTime
+    
+    if not readExisting:
+        with open("setinfo.json",'w') as fw:
+            json.dump(setinfo,fw,indent=4)    
+    
     logging.info("extract set info programme done")
     return setinfo
 
@@ -205,36 +193,82 @@ def draw_vel(ax,dep_list,vel_list,color='k',linestyle='-',label=""):
     line, = ax.plot(points_list[:,1],points_list[:,0],color=color,linestyle=linestyle,label=label)
     return line
 
-def get_st(net,sta,starttime,endtime,f_folder,pad=False,fill_value=None):
-    """
-    Read and return waveform between starttime and endtime by specified
+
+def gen_wf_files_summary(wfDir):
+    _dataFrame = []
+    for item in sorted(os.listdir(wfDir)):
+        itemPth = os.path.join(wfDir,item)
+        try:
+            st = obspy.read(itemPth,headonly=True)
+        except:
+            print(f"{itemPth} is not a waveform file.")
+            continue
+        for tr in st:
+            net = tr.stats.network
+            sta = tr.stats.station
+            chn = tr.stats.channel
+            startTime = tr.stats.starttime
+            endTime = tr.stats.endtime
+            julDays = []
+            loopTime = startTime+0.01 # +0.01 for debug
+            while loopTime < endTime:
+                year = loopTime.year
+                julDay = loopTime.julday
+                julDays.append(julDay)
+                loopTime +=24*60*60
+            _dataFrame.append([item,net,sta,chn,startTime,endTime,year,julDays])
+
+    df = pd.DataFrame(data=_dataFrame,
+                      columns=["fileName","net","sta","chn","startTime","endTime",'year',"julDays"])
+    df.to_csv(os.path.join(wfDir,"_wf_files_summary.csv"),index=False)
+
+def get_st(startTime,endTime,wfDir,net=None,sta=None,pad=False,fill_value=None,DEBUG=False):
+    """        
+    Read and return waveform between startTime and endtime by specified
     net and station in designated folder. It will merge waveform if include
     more than one file.
-    
+               
     The return is a obspy Stream object
     """
-    inc_list=[]
-    for file in os.listdir(f_folder):
-        file_path = os.path.join(f_folder,file)
-        try:
-            st = obspy.read(file_path,headonly=True)
-        except:
-            continue
-        t1,t2 = st[0].stats.starttime,st[0].stats.endtime
-        if t2 < starttime or t1 > endtime \
-            or st[0].stats.network != net\
-            or st[0].stats.station != sta:
-            continue
-        else:
-            inc_list.append(file_path)
-    #Read in data
-    st = Stream()
-    for path in inc_list:
-        st += obspy.read(path)
-    if len(st) == 0:
-        pass
+    #----------------- Quality Control ----------------------
+    sumCsvPth = os.path.join(wfDir,'_wf_files_summary.csv')
+    if not os.path.exists(sumCsvPth):
+        logging.info(f"gen_wf_files_summary({wfDir}) launched!")
+        gen_wf_files_summary(wfDir)
     else:
-        st.trim(starttime,endtime,pad=pad,fill_value=fill_value)
+        sumCsvMtime = os.path.getmtime(sumCsvPth)
+        for item in os.listdir(wfDir):
+            itemPth = os.path.join(wfDir,item)
+            itemMtime = os.path.getmtime(itemPth) # modification time
+            if itemMtime > sumCsvMtime:
+                gen_wf_files_summary(wfDir)
+                break
+    #---------------------------------------------------------
+    b = time.time()
+    inc_list = []
+    df = pd.read_csv(sumCsvPth)
+    dfUse = df
+    if net != None:
+        dfUse = dfUse[dfUse.net==net]
+    if sta != None:
+        dfUse = dfUse[dfUse.sta==sta]
+    dfUse = dfUse[~((dfUse.startTime>str(endTime)) | (dfUse.endTime<str(startTime)))]
+    inc_list = pd.unique(dfUse['fileName'])
+
+    #------------------------Read in data --------------------
+    st = Stream()
+    for fileName in inc_list:
+        filePth = os.path.join(wfDir,str(fileName))
+        if DEBUG:
+            print(f"get_st debug: st+=obspy.read({filePth})")
+        try:
+            st += obspy.read(filePth)
+        except:
+            raise Exception(f"Error in st += obspy.read({filePth})")
+    if len(st) == 0:
+        pass   
+    else:
+        st.trim(startTime,endTime,pad=pad,fill_value=fill_value)
     return st
 
 def get_st_SC(net,sta,starttime,endtime,f_folder,pad=False,fill_value=None):

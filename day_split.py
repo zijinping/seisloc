@@ -2,9 +2,11 @@ import numpy as np
 import os
 import re
 import logging
-from seisloc.sta import load_sta
+from seisloc.sta import load_sta,getNet
+from seisloc.utils import gen_wf_files_summary,get_st
 from tqdm import tqdm
 import obspy
+from obspy import Stream
 from obspy import UTCDateTime
 import multiprocessing as mp
 
@@ -74,22 +76,16 @@ def gen_day_split_time_nodes(timePoints,shiftHour):
     #append the last time
     dayTimeNodes.append(tte)
 
-    return dayTimeNodes
+    return dayTimeNodes                   
 
-def write_avail_days(outFdr,dayTimeNodes):
-    """
-    Generate a available days text file for cross-correlation usage
-    """
-    f = open(os.path.join(outFdr,'availdays.txt'),'w')
-    for time in dayTimeNodes:                
-        f.write(f"{time.year} {time.julday}\n")   
-    f.close()                       
-
-def write_st_to_file(st,outFdr,trimBtime,trimEtime,fileFmt="mseed"):
+def write_st_to_file(st,outFdr,trimBtime,trimEtime,fileFmt="mseed",staCorrection=False,net=None,sta=None):
     """
     Save traces in the Stream to the desginiated folder in format
     """
     for tr in st:
+        if staCorrection==True:
+            tr.stats.network = net
+            tr.stats.station = sta
         net=tr.stats.network
         sta=tr.stats.station
         chn=tr.stats.channel
@@ -122,22 +118,34 @@ def get_trim_idxs(trimBtime,trimEtime,timePoints):
 
     return idxa,idxb
 
-def cut_and_save_day_wf(dataPths,idxa,idxb,trimBtime,trimEtime,fileFmt,outFdr):
-    st=obspy.read(dataPths[idxa])
+def cut_and_save_day_wf(dataPths,idxa,idxb,trimBtime,trimEtime,fileFmt,outFdr,staCorrection=False,net=None,sta=None):
+    #---------------- get channel list -------------------------
+    fileChnList = []
+    chns = []
+    st = Stream()
     while idxa < idxb:
+        st+=obspy.read(dataPths[idxa],headonly=True)
+        fileChnList.append([dataPths[idxa],st[-1].stats.channel])
+        if st[-1].stats.channel not in chns:
+            chns.append(st[-1].stats.channel)
         idxa+=1
-        st+=obspy.read(dataPths[idxa])
-    #merge data, using try except to avoid mistake len(st)==1
-    chns = load_stream_channels(st)
+    del st
+    #---------------- process each channel ---------------------
     for chn in chns:
-        stUse = st.select(channel=chn)
+        stUse = Stream()
+        for dataPth,channel in fileChnList:
+            if channel != chn:
+                continue
+            stUse += obspy.read(dataPth)
+            assert stUse[-1].stats.channel == chn
         if len(stUse)==0:
             continue
         if len(stUse)>1:
-            stUse.merge(method=1,fill_value="interpolate")
+            stUse.merge(method=1,fill_value=0)
         stUse.trim(starttime=trimBtime,endtime=trimEtime)
-        write_st_to_file(stUse,outFdr,trimBtime,trimEtime,fileFmt=fileFmt)
-    
+        write_st_to_file(stUse,outFdr,trimBtime,trimEtime,fileFmt=fileFmt,staCorrection=staCorrection,net=net,sta=sta)
+        del stUse
+
 def sta_in_dict(sta,staDict):
     flag = 0
     staList = []
@@ -228,7 +236,7 @@ def raw_status_control(rawDir,staFile):
     stasUse = check_station_directories(rawDir,staDict)  # dir name should be sta 
     check_trace_status_net_sta(stasUse,staDict,rawDir)   # trace net and sta
 
-def mp_day_split(inDir,outDir,staFile,fileFmt="mseed",shiftHour=0,parallel=True,cutData=True,prjBtime=None,prjEtime=None):
+def mp_day_split(inDir,outDir,staFile,fileFmt="mseed",shiftHour=0,parallel=True,processes=10,cutData=True,prjBtime=None,prjEtime=None,staCorrection=False):
     '''
     This function reads in waveform data and split them by days.
     The inDir should be in the strcutre: inDir/staName/dataFiles
@@ -239,9 +247,10 @@ def mp_day_split(inDir,outDir,staFile,fileFmt="mseed",shiftHour=0,parallel=True,
       fileFmt: "SAC" or "MSEED"
     shiftHour: Shift trimming times to adjust time zones
      parallel: apply multiprocessing
-      cutData: if only wish to generate availdays.txt, set cutData to false
+      cutData: if only wish to generate availdays.txt, set cutData to False
      prjBtime: Project begin time. Data should be within the project time span
-     prjEtime: Project end time.
+     prjEtime: Project end time
+stacorrection: If True, update net and sta from the station file rather than the internal values of dataset
     '''
     #----------------- Initiation --------------------
     staDict = load_sta(staFile)
@@ -250,7 +259,11 @@ def mp_day_split(inDir,outDir,staFile,fileFmt="mseed",shiftHour=0,parallel=True,
         logging.info(f" Output dirctory {outDir} created")
     #----------------- Clean up information ----------
     for sta in os.listdir(inDir):
+        if staCorrection==True:
+            net = getNet(sta,staFile)
         staDir = os.path.join(inDir,sta)
+        if not os.path.isdir(staDir):
+            continue
         timePoints,dataPths = time_file_list(staDir,
                                              prjBtime=prjBtime,
                                              prjEtime=prjEtime)
@@ -260,13 +273,14 @@ def mp_day_split(inDir,outDir,staFile,fileFmt="mseed",shiftHour=0,parallel=True,
         logging.info(f"{sta} Time span: {timePoints[0]} {timePoints[-1]}")
         #------------- Split the data ----------------
         outFdr = os.path.join(outDir,sta)
+        if not os.path.exists(outFdr):
+            os.makedirs(outFdr)
         dayTimeNodes = gen_day_split_time_nodes(timePoints,shiftHour)
-        write_avail_days(outFdr,dayTimeNodes)
         if cutData == False: 
             logging.info(f"{sta} cutData is set False, no day split will be conducted!")
             continue                  #only generate availdays.txt
         if parallel:
-            pool = mp.Pool(processes=mp.cpu_count())
+            pool = mp.Pool(processes=processes)
         for i in range(len(dayTimeNodes)-1):
             trimBtime=dayTimeNodes[i] #trim start time
             trimEtime=dayTimeNodes[i+1]#trim end time
@@ -275,9 +289,39 @@ def mp_day_split(inDir,outDir,staFile,fileFmt="mseed",shiftHour=0,parallel=True,
             #read in coresponding files
             if parallel:
                 pool.apply_async(cut_and_save_day_wf,
-                                args=(dataPths,idxa,idxb,trimBtime,trimEtime,fileFmt,outFdr))
+                                args=(dataPths,idxa,idxb,trimBtime,trimEtime,fileFmt,outFdr,staCorrection,net,sta))
             else:
-                cut_and_save_day_wf(dataPths,idxa,idxb,trimBtime,trimEtime,fileFmt,outFdr)
+                cut_and_save_day_wf(dataPths,idxa,idxb,trimBtime,trimEtime,fileFmt,outFdr,staCorrection,net,sta)
         if parallel:
             pool.close()
             pool.join()
+        #gen_wf_files_summary(outFdr)
+
+def cut_single_sta_day_wf(prjBtime,prjEtime,net,sta,rawBase,saveBase,saveFmt,staCorrection=False,fill_value=0):
+    wfDir = os.path.join(rawBase,sta)
+    saveDir = os.path.join(saveBase,sta)
+    if not os.path.exists(saveDir):
+        os.mkdir(saveDir)
+    loopTime = prjBtime
+    while loopTime < prjEtime:
+        if staCorrection:
+            st = get_st(loopTime,loopTime+24*60*60,wfDir,net=None,sta=None,fill_value=0)
+            for tr in st:
+                tr.stats.network = net
+                tr.stats.station = sta
+        else:
+            st = get_st(loopTime,loopTime+24*60*60,wfDir,net=net,sta=net,fill_value=0)
+        #if len(st)==0:
+        #    pass
+        st.merge(method=1,fill_value=fill_value)
+        for tr in st:
+            chn = tr.stats.channel
+            if saveFmt.upper()=="SAC":
+                fname=net+"."+sta+"."+chn+"_"+\
+                       loopTime.strftime("%Y%m%d")+".SAC"
+            if saveFmt.upper()=="MSEED":
+                fname=net+"."+sta+"."+chn+"_"+\
+                       loopTime.strftime("%Y%m%d")+".mseed"
+            tr.write(saveDir+"/"+fname,format=saveFmt)
+            logging.info(fname+" writed.")
+        loopTime += 24*60*60

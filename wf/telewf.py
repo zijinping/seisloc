@@ -51,10 +51,10 @@ def gen_tele_files( datasetPth,
         os.mkdir(tele_dir)
         logger.info("tele dir created.")
     set_info = extract_set_info(datasetPth,staFile)
-    c_lon,c_lat = set_info["center"] 
-    starttime = set_info['s_times'][0]   
-    endtime = set_info['e_times'][-1]
-    netstas = set_info["netstas"]
+    c_lon,c_lat = set_info["center"][0]
+    starttime = UTCDateTime(set_info['startTime'][:-1])  
+    endtime = UTCDateTime(set_info['endTime'][:-1])
+    netstas = list(set_info["availYearDays"].keys())
     
     sta_dict = load_sta(staFile)
     client=Client(client_name)
@@ -134,8 +134,18 @@ def readTelePhase(cont):
         staPhaList.append([netsta,P_time,S_time,dist])
     return staPhaList
 
+def _trimStaTeleWf(net,sta,startTime,endTime,wfFolder,teleWfDir,mode,pad,fill_value):
+        if mode == "normal":
+            st=get_st(net,sta,startTime,endTime,wfFolder,pad=True,fill_value=0)
+        if mode == "SC":
+            st=get_st_SC(net,sta,startTime,endTime,wfFolder,pad=True,fll_value=0)
+        st = st.select(component="*Z")                # Use Z component
+        if len(st) != 0:                                  # len(st)==0 means no waveform
+            st[0].write(os.path.join(teleWfDir,net+"_"+sta+".mseed"))  
+
 def trimTeleWf(teleFile,wfRoot,pBefore=50,sAfter=50,mode="normal"):
     """
+    test
     Description:
         To plot tele-event waveform, the steps are:
             1. Generate tele-event files
@@ -183,21 +193,27 @@ def trimTeleWf(teleFile,wfRoot,pBefore=50,sAfter=50,mode="normal"):
         netsta = staPhase[0]
         net = netsta[:2]
         sta = netsta[2:]
-
+     
         wfFolder = os.path.join(wfRoot,sta) # Waveform folder
         if mode == "normal":
-            st=get_st(net,sta,startTime,endTime,wfFolder,pad=True)
+            st=get_st(startTime,endTime,wfFolder,net,sta,pad=True,fill_value=0)                                                                                                                            
         if mode == "SC":
-            st=get_st_SC(net,sta,startTime,endTime,wfFolder,pad=True)
+            st=get_st_SC(net,sta,startTime,endTime,wfFolder,pad=True,fll_value=0)
         st = st.select(component="*Z")                # Use Z component
         if len(st) != 0:                                  # len(st)==0 means no waveform
             stsum.append(st[0])
     stsum.write(os.path.join(teleFile[:-5]+".mseed"))
 
-def trimTeleWfs(teleRoot="tele_event",wfRoot="day_data"):
+
+def trimTeleWfs(teleRoot="tele_event",wfRoot="day_data",processes=1):
     teleFiles = glob.glob(os.path.join(teleRoot,"*tele"))
+    pool = mp.Pool(processes=processes)
     for teleFile in teleFiles:           # Loop for each event
-        trimTeleWf(teleFile,wfRoot=wfRoot)
+        #trimTeleWf(teleFile,wfRoot)
+        pool.apply_async(trimTeleWf,args=(teleFile,wfRoot))
+    print(f"Multiprocessing with cores = {processes}")
+    pool.close()
+    pool.join()
 
 def axisRange(staPhaList,plotPhase,xOffsets,yOffsetRatios):
     """
@@ -408,7 +424,9 @@ def plotTeleDiffs(plotPhase="P",
         with open(tele_file,'r') as f:
             lines = f.readlines()
         f.close()
-
+        if not os.path.exists(tele_file[:-4]+"mseed"):
+            print(tele_file[:-4]+"mseed "+"not existed!")
+            continue
         st = obspy.read(tele_file[:-4]+"mseed")
         st.detrend("linear")
         st.detrend("constant")

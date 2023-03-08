@@ -21,6 +21,18 @@ def load_taup_tvel(tvelFile):
         tvelDict["rhos"].append(float(rho))
     return tvelDict
 
+def _load_event_dat_etime(timeSeg):
+    etime = UTCDateTime.strptime(timeSeg[:8],'%Y%m%d')
+    _hr = timeSeg[10:12]
+    if _hr == "  ":_hr=" 0"
+    _mi = timeSeg[12:14]
+    if _mi == "  ":_mi=" 0"
+    _sec = timeSeg[14:16]
+    if _sec == "  ":_sec=" 0"
+    _secf = timeSeg[16:18]
+    etime = etime + int(_hr)*60*60 + int(_mi)*60 + int(_sec) + int(_secf)*0.01
+    return etime
+
 def load_event_dat(eventDatFile="./event.dat",showExampleLine=False):
     eventDatDict = {}
     f = open(eventDatFile,'r')
@@ -29,7 +41,7 @@ def load_event_dat(eventDatFile="./event.dat",showExampleLine=False):
         print("Head line:"+eventLines[0].rstrip())
     for eventLine in eventLines:
         timeSeg = eventLine[:18]
-        etime = UTCDateTime.strptime(timeSeg,"%Y%m%d  %H%M%S%f")
+        etime = _load_event_dat_etime(timeSeg)
         otherSeg = eventLine[18:].strip()
         _lat,_lon,_dep,_mag,_eh,_ez,_rms,_evid = re.split(" +",otherSeg)
         lat,lon,dep,mag,eh,ez,rms = map(float,(_lat,_lon,_dep,_mag,_eh,_ez,_rms))
@@ -125,7 +137,7 @@ def write_cnv(cnv,cnvFilePth="vel.cnv",staChrLen=6):
         f.write(part1+part2+part3+part4)
         i=0
         for sta,phsType,travTime,weightCode in cnv[evstr]['phases']:
-            _phase=sta.ljust(staChrLen," ")+phsType+str(weightCode)+format(travTime,'6.2f')
+            _phase=sta.ljust(staChrLen," ")+phsType+str(weightCode)+format(np.round(travTime,2),'6.2f')
             if i%6==0:
                 f.write("\n")
             f.write(_phase)
@@ -294,7 +306,6 @@ def load_cnv(cnv_file="velout.cnv"):
         for line in f: lines.append(line.rstrip())                
     ecount = 0                  
     for line in lines:
-        print(line)
         if re.match('\d+',line[:2]):  # event line
             if line[:4] == "9999":    # end marker
                 continue
@@ -324,6 +335,7 @@ def load_cnv(cnv_file="velout.cnv"):
             for sta,phsType,travTime,weightCode in phsRecs:
                 if sta not in availStas:
                     cnv[evstr]['nsta'] += 1
+                    availStas.append(sta)
                 cnv[evstr]['phases'].append([sta,phsType,travTime,weightCode])
     return cnv    
     

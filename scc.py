@@ -27,7 +27,7 @@ from tqdm import tqdm
 from seisloc.hypoinv import load_sum_evid,load_sum_evstr
 import multiprocessing as mp
 
-def wf_scc(tmplt_st,sta_st,tb,te,maxShift,marker='t0',bestO=False):
+def wf_scc(st1,st2,tb,te,maxShift,marker='t0',bestO=False):
     """
     Sliding-window cross-correlation between template and target waveform
     Reference time should be the event origin time
@@ -45,9 +45,11 @@ def wf_scc(tmplt_st,sta_st,tb,te,maxShift,marker='t0',bestO=False):
     -----------
         ccmax: maximum cross-correlation coefficient
         aamax: amplitude ratio at ccmax
-           i0: the shifting index at ccmax
+     bestTime: the best arrival time
       cc_list: cross-correlation values
     """
+    tmplt_st = st1.copy()
+    sta_st = st2.copy()
     tmplt_st.sort()
     sta_st.sort()
     
@@ -62,11 +64,13 @@ def wf_scc(tmplt_st,sta_st,tb,te,maxShift,marker='t0',bestO=False):
     sac1 = SACTrace.from_obspy_trace(tmplt_st[0])
     reftime1 = sac1.reftime
     tmplt_st.trim(reftime1+markerTime1+tb,reftime1+markerTime1+te)
+    tmplt_st.detrend("constant")
     
     markerTime2 = sta_st[0].stats.sac[marker]
     sac2 = SACTrace.from_obspy_trace(sta_st[0])
     reftime2 = sac2.reftime
     sta_st.trim(reftime2+markerTime2+tb-maxShift,reftime2+markerTime2+te+maxShift)
+    sta_st.detrend("constant")
     assert sac1.o == 0
     assert sac2.o == 0
     
