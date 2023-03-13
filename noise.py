@@ -57,7 +57,7 @@ def plot_corr(ax,sta_pair,base="CFs_Result",xlim=[-10,10],cmap="PiYG"):
     data = np.zeros((len(pkls),len(pkls[0]["NCF"])))
     for i in range(len(pkls)):
         data[i,:] = pkls[i]["NCF"].ravel()
-    [xi,yi]=np.meshgrid(pkls[0]['CFtime'],np.arange(0,len(pkls)+1,1))
+    [xi,yi]=np.meshgrid(pkls[0]['CFtime'],np.arange(0,len(pkls),1))
     ax.pcolormesh(xi,yi,data,cmap="PiYG",vmin=-1,vmax=1)
     ax.vlines(0,0,len(pkls))
     ax.set_ylim([len(pkls),0])

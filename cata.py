@@ -859,7 +859,7 @@ class Catalog():
             _lat = format(lat,'10.5f')
             _dep = format(dep,'7.2f')
             _mag = format(mag,'5.1f')
-            _relative_days = format(relative_days,'14.8f')
+            _relative_days = format(relative_days,'16.8f')
             line = _key+_lon+_lat+_dep+_mag+_relative_days+" "+str(etime)
             f.write(line+"\n")
             if disp == True:

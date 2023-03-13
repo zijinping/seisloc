@@ -245,7 +245,7 @@ def wf_dist_plot(st,
        
     for tr in st:            # Plot trace by trace
         sta = tr.stats.station
-        sac = SACTrace.from_obspy.trace(tr)
+        sac = SACTrace.from_obspy_trace(tr)
         tr_ref_time = sac.reftime
         tr_o_value = tr.stats.sac.o
         event_time = tr_ref_time + tr_o_value

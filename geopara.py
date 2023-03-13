@@ -142,7 +142,7 @@ class WYpara():
         """
         Read in designated pad_name pad, the file name should be pad_name+'.pad'
         """
-        pad_dir = self.dict["pad_dir"]
+        pad_dir = self.dict["padDir"]
         pad_file = os.path.join(pad_dir,pad_name+'.pad')
         col = wellpad(pad_file,
                 platform_edgecolor = platform_edgecolor,
