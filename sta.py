@@ -55,11 +55,11 @@ def load_sta(sta_file):
     with open(sta_file,'r') as f:
         for line in f:
             line = line.rstrip()
-            net,sta,_lon,_lat,_ele,label=re.split("[ ,;]+",line)[:6]
+            net,sta,_lon,_lat,_ele,mkr1,mkr2=re.split("[ ,;]+",line)[:7]
             if net not in sta_dict:
                 sta_dict[net]={}
             if sta not in sta_dict[net]:
-                sta_dict[net][sta] = [float(_lon),float(_lat),int(float(_ele)),label]
+                sta_dict[net][sta] = [float(_lon),float(_lat),int(float(_ele)),mkr1,mkr2]
     return sta_dict
 
 def getNet(sta,staFile):

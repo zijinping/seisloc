@@ -16,7 +16,7 @@ from tqdm import tqdm
 from seisloc.noise import xcorr
 from numpy import polyfit
 import glob
-
+import multiprocessing as mp
 
 def gen_tele_files( datasetPth,
                     staFile,
@@ -247,7 +247,7 @@ def axisRange(staPhaList,plotPhase,xOffsets,yOffsetRatios):
 
 def plotTeleWf(teleFile,
               wfRoot = "day_data",
-              staSel="all",
+              stasSel="all",
               staExclude = [],
               staHighlight=[],
               plotPhase = "P",
@@ -260,11 +260,12 @@ def plotTeleWf(teleFile,
               figsize=(6,8),
               linewidth=1,
               tickHeight=0.05,
-              oFormat="pdf"):
+              oFormat="pdf",
+              saveNameMkr=""):
     """
     Parameters:
           wfRoot: The folder containing wf data in strcture wf_dir/sta_name/'wf files'
-         staSel: list or , station list selected for plot, "all": plot all
+         stasSel: list or , station list selected for plot, "all": plot all
      staExclude: stations excluded in the plot,used for problem staion
    staHighlight: station waveform to be highlighted will be drawn in green
       plotPhase: "P","S" or "PS". "P" only plot P arrival, "S"  only plot S arrival.
@@ -314,8 +315,8 @@ def plotTeleWf(teleFile,
         net = netsta[:2]
         sta = netsta[2:]
 
-        if staSel != "all": # Then staSel should be a list
-            if sta not in staSel:
+        if stasSel != "all": # Then stasSel should be a list
+            if sta not in stasSel:
                 continue
         if sta in staExclude:
             continue
@@ -359,17 +360,20 @@ def plotTeleWf(teleFile,
                 plt.text(xstart,dist,f'{sta}',color='darkred',fontsize=12)
             elif sta in labelStas:
                 plt.text(xstart,dist,f'{sta}',color='darkred',fontsize=12)
-    plt.legend([P_marker,S_marker],['tele P','tele S'],loc='upper right')
+    try:
+        plt.legend([P_marker,S_marker],['tele P','tele S'],loc='upper right')
+    except:
+        pass
     plt.tight_layout()
     if oFormat.lower()=="pdf":
-        plt.savefig(os.path.join(teleFile[:-5]+".pdf"))
+        plt.savefig(teleFile[:-5]+saveNameMkr+".pdf")
     if oFormat.lower()=="jpg" or oFormat.lower=="jpeg":
-        plt.savefig(os.path.join(teleFile[:-5]+".jpg"))
+        plt.savefig(teleFile[:-5]+saveNameMkr+".jpg")
     if oFormat.lower()=="png":
-        plt.savefig(os.path.join(teleFile[:-5]+".png"))
+        plt.savefig(teleFile[:-5]+saveNameMkr+".png")
 
 def plotTeleWfs(teleRoot="tele_event",wfRoot="day_data",
-                          staSel='all',
+                          stasSel='all',
                           staExclude = [],
                           plotPhase = "P",
                           bpRange= [0.5,2],
@@ -381,12 +385,13 @@ def plotTeleWfs(teleRoot="tele_event",wfRoot="day_data",
                           figsize=(8,12),
                           linewidth=0.5,
                           tickHeight=0.01,
-                          oFormat="png"):
+                          oFormat="png",
+                          saveNameMkr=""):
     teleFiles = glob.glob(os.path.join(teleRoot,"*tele"))
     for teleFile in teleFiles:           # Loop for each event
             plotTeleWf(teleFile,
                           wfRoot = wfRoot,
-                          staSel=staSel,
+                          stasSel=stasSel,
                           staExclude = staExclude,
                           plotPhase = plotPhase,
                           bpRange= bpRange,
@@ -398,18 +403,21 @@ def plotTeleWfs(teleRoot="tele_event",wfRoot="day_data",
                           figsize=figsize,
                           linewidth=linewidth,
                           tickHeight=tickHeight,
-                          oFormat=oFormat)
+                          oFormat=oFormat,
+                          saveNameMkr=saveNameMkr)
 
 
 def plotTeleDiffs(plotPhase="P",
                  tb=-5,
                  te=20,
                  root="tele_event",
+                 stasSel="all",
                  maxlag=100,
                  freqRange=[0.5,2],
                  decimateFactor=5,
                  threshold = 0.5,
-                 figsize=(10,6)):
+                 figsize=(10,6),
+                 saveNameMkr=""):
     """
     This function reads in the corresponding tele event minseed files,
     do cross-correlation to find large shift stations and make plot.
@@ -430,13 +438,24 @@ def plotTeleDiffs(plotPhase="P",
         st = obspy.read(tele_file[:-4]+"mseed")
         st.detrend("linear")
         st.detrend("constant")
-        st_new = st.decimate(factor=decimateFactor)
+        st.taper(max_percentage=0.05)
+        if stasSel!="all":
+            assert isinstance(stasSel,list)
+            st_new = Stream()
+            for tr in st:
+                if tr.stats.station in stasSel:
+                    st_new.append(tr)
+        else:
+            st_new = st
+        st_new = st_new.decimate(factor=decimateFactor)
         st_new.filter("bandpass",freqmin=freqRange[0],freqmax=freqRange[1],zerophase=True)
 
         ref_sta_set =False
 
         maxtimes = []
         sta_sequence = []
+        if len(st_new) == 0: # debug
+            continue
         delta = st_new[0].stats.delta
         
         str_time,_,_,_dep,_mag,type = lines[0].split()
@@ -495,4 +514,4 @@ def plotTeleDiffs(plotPhase="P",
             if np.abs(diffs[i])>threshold:
                 plt.text(i,diffs[i],sta_sequence[i])
         plt.title(f"Tele Event {etime} M{_mag}")
-        plt.savefig(tele_file[:-4]+"jpg")
+        plt.savefig(tele_file[:-5]+saveNameMkr+".jpg")
