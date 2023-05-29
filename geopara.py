@@ -156,7 +156,7 @@ class WYpara():
         Read in all wellpads with file name end with ".pad"
         """
         cols = []
-        for file in os.listdir(self.dict["pad_dir"]):
+        for file in os.listdir(self.dict["padDir"]):
             if file[-3:] == "pad":
                 pad_name = file[:-4]
                 col = self.wellpad(pad_name,

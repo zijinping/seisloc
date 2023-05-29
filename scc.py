@@ -83,7 +83,7 @@ def wf_scc(st1,st2,tb,te,maxShift,marker='t0',bestO=False):
             sta_data.append(sta_st[i].data)
     elif ncom == 1:
         tmplt_data.append(tmplt_st[0].data)
-        st_data.append(sta_st[0].data)
+        sta_data.append(sta_st[0].data)
     ccmax,aamax,i0,cc_list = data_scc(tmplt_data,sta_data,ncom)
     bestTime = markerTime2 + (i0-(len(cc_list)-1)/2)*delta
     

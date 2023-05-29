@@ -158,6 +158,7 @@ class Catalog():
               ylim=[],
               figSize=None,
               edgeColor='grey',
+              edgeWidth=0.5,
               markerSize=6,
               sizeRatio=1,
               impMag=None,
@@ -236,6 +237,8 @@ class Catalog():
             im = plt.scatter(self.locs[:,0],
                     self.locs[:,1],
                     c=times_plot,
+                    edgecolors=edgeColor,
+                    linewidths=edgeWidth,
                     s=(self.locs[:,3]+2)*sizeRatio,
                     cmap = cmap,
                     vmin = vmin,
@@ -293,6 +296,7 @@ class Catalog():
               blonlat,
               width=0.1,
               edgecolor='grey',
+              edgewidth=0.1,
               depmin=0,
               depmax=10,
               size_ratio=1,
@@ -303,7 +307,11 @@ class Catalog():
               vmax=1,
               unit="day",
               aspect="auto",
-              plt_show=True):
+              opposite=1,
+              drawFig=True,
+              drawCb=False,
+              drawImpLg=True,
+              pltShow=True):
         """
         Description
 
@@ -330,61 +338,70 @@ class Catalog():
         blon = blonlat[0]; blat = blonlat[1]
         results = in_rectangle(self.locs,alon,alat,blon,blat,width/2)
         jj = np.where(results[:,0]>0)
+        self.vplotjj = jj
         self.vxy=np.zeros((jj[0].shape[-1],2))
         self.vkeys=np.zeros((jj[0].shape[-1],))
         self.vkeys = self.keys[jj].ravel()
         self.vxy[:,0] = results[jj,1]
         self.vxy[:,1] = self.locs[jj,2]
-        if cmap==None:
-            plt.scatter(results[jj,1],
-                    self.locs[jj,2],
-                    marker='o',
-                    edgecolors = edgecolor,
-                    facecolors='none',
-                    s=(self.locs[jj,3]+2)*size_ratio*5)
-        else:
-            shift_seconds = reftime - self.first_time
-            times_plot = self.relative_seconds[jj]-shift_seconds
-            if unit=="day":
-                times_plot = times_plot/(24*60*60)
-            elif unit=="hour":
-                times_plot = times_plot/(60*60)
-            elif unit=="minute":
-                times_plot = times_plot/60
-            im = plt.scatter(results[jj,1],
-                    self.locs[jj,2],
-                    c=times_plot,
-                    s=(self.locs[jj,3]+2)*size_ratio*5,
-                    cmap = cmap,
-                    vmin = vmin,
-                    vmax = vmax,
-                    marker='o',
-                    alpha=1)
-            cb = plt.colorbar(im)
-            cb.set_label(unit)
-
-        tmplocs = self.locs[jj]
-        tmpresults = results[jj]
-        if imp_mag != None:
-            kk = np.where(tmplocs[:,3]>=imp_mag)
-            if len(kk)>0:                 
-                imp = plt.scatter(tmpresults[kk,1],
-                        tmplocs[kk,2],
-                        (tmplocs[kk,3]+2)*size_ratio*30,
-                        edgecolors ='black',
-                        facecolors='red',
-                        marker='*',
+        if drawFig:
+            if cmap==None:
+                plt.scatter(results[jj,1]*opposite,
+                        self.locs[jj,2],
+                        marker='o',
+                        edgecolors = edgecolor,
+                        linewidths = edgewidth,
+                        facecolors='none',
+                        s=(self.locs[jj,3]+2)*size_ratio*5)
+            else:
+                shift_seconds = reftime - self.first_time
+                times_plot = self.relative_seconds[jj]-shift_seconds
+                if unit=="day":
+                    times_plot = times_plot/(24*60*60)
+                elif unit=="hour":
+                    times_plot = times_plot/(60*60)
+                elif unit=="minute":
+                    times_plot = times_plot/60
+                im = plt.scatter(results[jj,1]*opposite,
+                        self.locs[jj,2],
+                        c=times_plot,
+                        s=(self.locs[jj,3]+2)*size_ratio*5,
+                        edgecolors=edgecolor,
+                        linewidths = edgewidth,
+                        cmap = cmap,
+                        vmin = vmin,
+                        vmax = vmax,
+                        marker='o',
                         alpha=1)
-                plt.legend([imp],[f"M$\geq${format(imp_mag,'4.1f')}"])
-        
-        plt.ylim([depmax,depmin])
-        plt.xlim([0,length_km])
-        plt.xlabel("distance (km)")
-        plt.ylabel("depth (km)")
-        plt.gca().set_aspect(aspect)
+                if drawCb:
+                    cb = plt.colorbar(im)
+                    cb.set_label(unit)
 
-        if plt_show==True:
-            plt.show()
+            tmplocs = self.locs[jj]
+            tmpresults = results[jj]
+            if imp_mag != None:
+                kk = np.where(tmplocs[:,3]>=imp_mag)
+                if len(kk)>0:
+                    print(tmpresults[kk,1],tmplocs[kk,2],tmplocs[kk,3],edgecolor, \
+                        (tmplocs[kk,3]+2)*size_ratio*50)
+                    self.impScatter = plt.scatter(tmpresults[kk,1]*opposite,
+                            tmplocs[kk,2],
+                            (tmplocs[kk,3]+2)*size_ratio*50,
+                            edgecolors =edgecolor,
+                            facecolors='red',
+                            marker='*',
+                            alpha=1)
+                    if drawImpLg:
+                        plt.legend([self.impScatter],[f"M$\geq${format(imp_mag,'4.1f')}"])
+        
+            plt.ylim([depmax,depmin])
+            plt.xlim([0,length_km])
+            plt.xlabel("distance (km)")
+            plt.ylabel("depth (km)")
+            plt.gca().set_aspect(aspect)
+
+            if pltShow==True:
+                plt.show()
     
     def MT_plot(self,
                 xlim=[],
@@ -842,7 +859,10 @@ class Catalog():
         self.dict_count_Mo = sum_count_Mo(self,starttime,endtime)
         write_sum_count_Mo(self.dict_count_Mo,outFile,mode)
 
-    def write_info(self,fileName="lon_lat_dep_mag_relative_days_time.txt",reftime=None,disp=False):
+    def write_info(self,fileName=None,reftime=None,disp=False):
+        if fileName==None:
+            nowTime = UTCDateTime.now()
+            fileName = "Catalog_"+nowTime.strftime("%Y%m%d%H%M%S")+".txt"
         if reftime == None:
             reftime = self.first_time
         print("The reference time is: ",reftime)

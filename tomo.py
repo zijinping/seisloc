@@ -1,5 +1,5 @@
 import warnings
-from seisloc.hypoinv import load_y2000
+from seisloc.text_io import load_y2000
 import numpy as np
 import os
 import re

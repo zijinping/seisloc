@@ -6,6 +6,7 @@ from numba import jit
 import logging
 from obspy.geodetics import gps2dist_azimuth
 import subprocess
+from seisloc.math import lsfit,weighted_lsfit
 
 def spherical_dist(lon_1,lat_1,lon_2,lat_2):
     """
@@ -111,7 +112,8 @@ def loc_by_width(lon1,lat1,lon2,lat2,width,direction='right'):
     """
     dlon = (lon2 - lon1) * np.cos(np.deg2rad(lat1))
     dlat = lat2 - lat1
-    dist=(dlon**2+dlat**2)**0.5
+    clat = (lat2+lat1)/2
+    dist=((dlon*np.cos(clat/180*np.pi))**2+dlat**2)**0.5
     
     if direction == "right":  # extend width to the right 
     	delta_lat = -width*(dlon/dist)    # cos_theta
@@ -704,4 +706,52 @@ def xy_projection_GMT(xys,blon,blat,elon,elat,_widths='-3/3'):
     os.system(f'rm {rdName}.project')
     subprocess.run(["rm","tmp_xys.tmp"])
     
-    return results  
+    return results
+
+def geo_az_from_xy(x,y):
+    if x>=0:
+        strikeDeg = np.rad2deg(np.arccos(y/(x**2+y**2)**0.5))
+    elif x<0:
+        strikeDeg = 360 - np.rad2deg(np.arccos(y/(x**2+y**2)**0.5))
+    
+    return strikeDeg
+    
+def strike_dip_from_locs(lons,lats,deps,W=1):
+    '''
+    only applicable for dimension that earthquake spherical effect is weak
+    lons,lats: 1-D longitude and latitude numpy array
+    W: Paramter for weighting, can be in the format of a value, 1-D array or 2-D array
+    '''
+    #---------- format control ------------------
+    if isinstance(lons,list):
+        lons = np.array(lons)
+    if isinstance(lats,list):
+        lats = np.array(lats)
+    if isinstance(deps,list):
+        deps = np.array(deps)
+    assert len(lons.shape) == 1 and len(lats.shape)==1 and len(deps.shape)==1
+    assert len(lons) == len(lats) and len(lons) == len(deps)
+    #--------------- preprocessing ---------------
+    
+    lonMean = np.mean(lons)
+    latMean = np.mean(lats)
+    xs = (lons-lonMean)*111.1*np.cos(np.deg2rad(latMean))
+    ys = (lats-latMean)*111.1
+    rs = np.sqrt(xs**2+ys**2)
+    if np.max(rs) >100:
+        print("Warning: the raidus exceeds 100 km!")
+
+    G = np.ones((len(lons),3))
+    G[:,0] = xs
+    G[:,1] = ys
+    dobs = deps
+    m = weighted_lsfit(G,dobs,W)
+    meanZ = m[2]
+    dipAzDeg = geo_az_from_xy(m[0],m[1])
+    strikeAzDeg=dipAzDeg-90
+    if strikeAzDeg <0:
+        strikeAzDeg += 360
+    
+    dipDeg = np.rad2deg(np.arctan(1/np.linalg.norm(m[:2])))
+    
+    return strikeAzDeg, dipDeg, meanZ

@@ -8,7 +8,7 @@ import re
 import matplotlib.pyplot as plt
 from seisloc.utils import get_st
 from seisloc.geometry import spherical_dist
-from seisloc.phase_io import load_y2000
+from seisloc.text_io import load_y2000
 from seisloc.sta import load_sta
 import numpy as np
 from tqdm import tqdm
