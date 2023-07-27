@@ -648,3 +648,22 @@ def read_line_values(line,vtype="float"):
         else:
             raise Exception("Unrecognized value type: ",vtype)
     return values
+
+def load_config(confFile):
+    with open(confFile,'r') as f:
+        for line in f:
+            line = line.strip()
+            if line[0]=="#":
+                continue
+            splits = re.split("=",line,maxsplit=1)
+            para = splits[0]
+            val = splits[1]
+            val = val.strip("\"")
+            val = val.strip("\'")
+            if re.match("^[+-]*[0-9]+\.*[0-9]*$",val):
+                if re.match("^[+-]*\d+$",val):
+                    val = int(val)
+                else:
+                    val = float(val)
+
+            globals()[para]=val

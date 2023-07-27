@@ -11,7 +11,7 @@ from obspy import UTCDateTime
 import os
 import sys
 import time
-from seisloc.dd import loadDD
+from seisloc.dd import load_DD
 import time
 from seisloc.geopara import WYpara
 from tqdm import tqdm
@@ -35,7 +35,7 @@ def dd2fdsn(in_file,subset=None):
     f=open(out_file,'w')
     f.write("#EventID|Time|Latitude|Longitude|Depth/km|Author|Catalog|Contributor|ContributorID|MagType|Magnitude|MagAuthor|EventLocationName\n")
     f.close()
-    eve_dict,df = loadDD(reloc_file=in_file)
+    eve_dict,df = load_DD(reloc_file=in_file)
     T1 = time.time()
     print("%f seconds passed to load hypoDD file" %(T1-T0))
     eve_list = list(eve_dict)
@@ -723,3 +723,30 @@ def cnv2pha(cnvFile):
             weightValue = 1-weightCode/4
             print(f"{format(sta,'<5s')} {format(travTime,'10.3f')} {format(weightValue,'7.3f')}   {phsType}")
             f.write(f"{format(sta,'<5s')} {format(travTime,'10.3f')} {format(weightValue,'7.3f')}   {phsType}"+"\n")
+
+
+def arc2phs(arc,outFile="out.phs"):
+    keys = list(arc.keys())
+    f = open(outFile,'w')
+    for key in sorted(keys):
+        evlo = arc[key]['evlo']
+        evla = arc[key]['evla']
+        evdp = arc[key]['evdp']
+        emag = arc[key]['emag']
+        evid = arc[key]['evid']
+        _date=key[:8]
+        _time=key[8:16]
+        _evla=str(int(evla))+"N"+str(int(np.round((evla-int(evla))*60*100,0))).zfill(4)
+        _evlo=str(int(evlo))+"E"+str(int(np.round((evlo-int(evlo))*60*100,0))).zfill(4)
+        _evdp=format(int(evdp*100),'5d')
+        _magAmp=format(int(emag*100),'3d')
+        _tmp = " "*83+"L"
+        f.write(_date+_time+_evla+_evlo+_evdp+_magAmp+_tmp+_magAmp+"\n")
+
+        for net,sta,pt,ptimeBJ,res,wt in arc[key]['phase']:
+            _secs=format(int((ptimeBJ.second + ptimeBJ.microsecond/1000000)*100),">5d")
+            if pt == "P":
+                f.write(format(sta,'<5s')+format(net,'2s')+" "*2+"SHZ"+" "+"IPU"+str(wt)+ptimeBJ.strftime("%Y%m%d%H%M")+_secs+"   0  0    0   0   0\n")
+            else: # pt == "S":
+                f.write(format(sta,'<5s')+format(net,'2s')+" "*2+"SHZ"+" "+"   "+" "    +ptimeBJ.strftime("%Y%m%d%H%M")+"    0   0  0"+_secs+"ES "+str(wt)+"   0\n")
+        f.write(format(evid,">72d")+"\n")

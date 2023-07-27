@@ -13,7 +13,7 @@ def locate_slave(masLon,masLat,masDep,masVels,phaseRecs,model,stas):
         staLat = stas.dict["SC"][sta][1]
         dist,az,baz = gps2dist_azimuth(masLat,masLon,staLat,staLon)
         distKm = dist/1000
-        distDeg = distKm/111.1
+        distDeg = distKm/111.19
         if phsType.lower() == "p":
             masVel = masVels[0]
         if phsType.lower() == "s":
@@ -31,14 +31,23 @@ def locate_slave(masLon,masLat,masDep,masVels,phaseRecs,model,stas):
             G.append([dtdx,dtdy,dtdz])
             d.append([dt])
             W.append(weight)
-    G = np.array(G)         
+    G = np.array(G)
+    norm0 = np.linalg.norm(G[:,0])
+    norm1 = np.linalg.norm(G[:,1])
+    norm2 = np.linalg.norm(G[:,2])
+    G[:,0] = G[:,0]/norm0
+    G[:,1] = G[:,1]/norm1
+    G[:,2] = G[:,2]/norm2
+
     d = np.array(d)  
     if len(G)<3:       # No enough observation     
         m = np.zeros((3,1))
     else:                   
         m = lsfit(G,d,W)                        
-    dxkm,dykm,dzkm = m.ravel()
-    dlon = dxkm/(111.1*np.cos(np.deg2rad(masLat)))
-    dlat = dykm/111.1
+    dxkm = m.ravel()[0]/norm0
+    dykm = m.ravel()[1]/norm1
+    dzkm = m.ravel()[2]/norm2
+    dlon = dxkm/(111.19*np.cos(np.deg2rad(masLat)))
+    dlat = dykm/111.19
                             
     return masLon+dlon,masLat+dlat,masDep+dzkm

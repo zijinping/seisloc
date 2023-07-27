@@ -200,8 +200,8 @@ def hypoDD_ref_days(reloc_file,ref_time,shift_hours=0):
     f.close()
 
 def compare_DD(dd1_path,dd2_path):
-    dd1,_ = loadDD(dd1_path)
-    dd2,_ = loadDD(dd2_path)
+    dd1,_ = load_DD(dd1_path)
+    dd2,_ = load_DD(dd2_path)
     f = open("dd_diff.dat",'w')
     for key in dd1:
         try: 
@@ -250,7 +250,7 @@ def hypoDD_mag_mapper(reloc_file,out_sum,magcolumn_index=128):
             f_obj.write(line)
     f_obj.close()
 
-def loadDD(reloc_file="hypoDD.reloc",shift_hour=0):
+def load_DD(reloc_file="hypoDD.reloc",shift_hour=0):
     """
     load results of hypoDD
     return eve_dict, df
@@ -270,14 +270,18 @@ def loadDD(reloc_file="hypoDD.reloc",shift_hour=0):
 
     dataset = np.loadtxt(reloc_file)
     
-    if dataset.shape[1] == 24:
+    if dataset.shape[1] == 24: # format of hypoDD.reloc file
         columns = ["ID","LAT","LON","DEPTH","X","Y","Z","EX","EY","EZ",\
                    "YR","MO","DY","HR","MI","SC","MAG",\
                    "NCCP","NCCS","NCTP","NCTS","RCC","RCT","CID"]
-    if dataset.shape[1] == 25:
+    if dataset.shape[1] == 25: # format of modified hypoDD.reloc, note the last column
         columns = ["ID","LAT","LON","DEPTH","X","Y","Z","EX","EY","EZ",\
                    "YR","MO","DY","HR","MI","SC","MAG",\
                    "NCCP","NCCS","NCTP","NCTS","RCC","RCT","CID","DAY"]
+    if dataset.shape[1] == 18: # format of hypoDD.loc file
+        columns = ["ID","LAT","LON","DEPTH","X","Y","Z","EX","EY","EZ",\
+                   "YR","MO","DY","HR","MI","SC","MAG","CID"]
+
     
     for i,data in enumerate(dataset):
         eve_id = data[0]
@@ -397,7 +401,7 @@ def bootstrap_summary(times,base_folder="hypoDD"):
     print("Loading results ...")
     for tar_folder in tar_folders:
         reloc_file = os.path.join(tar_folder,'hypoDD.reloc')
-        dd_dict,_ = loadDD(reloc_file)
+        dd_dict,_ = load_DD(reloc_file)
         for key in dd_dict.keys():
             rand_dict[key].append(dd_dict[key][:4])
     
@@ -555,10 +559,49 @@ def rotDD(ddfile,center,rotate):
         _evid,_lat,_lon = line.split()[:3]
         lat = float(_lat)
         lon = float(_lon)
-        rotated = spherical_rotate([lon,lat],center=center,rotate=rotate)
+        rotated = spherical_rotate([lon,lat],center=center,degree=rotate)
         new_lon = rotated[0,0]
         new_lat = rotated[0,1]
         new_line = line[:9] + format(new_lat,'>11.6f')+format(new_lon,'>12.6f')+line[32:]
         new_cont.append(new_line)
     
     writefile(new_cont,ddfile+".rot")
+
+def subset_dtcc(evids,ccFilePth,saveFilePth="",useStas=[]):
+    linesUse = []      
+    ccFileName = os.path.basename(ccFilePth)
+    with open(ccFilePth,'r') as f:
+        for line in tqdm(f):  
+            if line[0] == "#":
+                record=False
+                _,_evid1,_evid2,_ = line.split()
+                if int(_evid1) in evids or int(_evid2) in evids:
+                    linesUse.append(line)
+                    record = True
+            else:          
+                if record==True:
+                    if useStas==[]:
+                        linesUse.append(line)
+                    else:
+                        sta = re.split(" +",line)[0]
+                        if sta in useStas:
+                            linesUse.append(line)
+    if saveFilePth=="":
+        saveFilePth=ccFileName+'.subset'
+    with open(saveFilePth,'w') as f:
+        for line in linesUse:
+            f.write(line)
+
+def subset_dd_file(evids,ddFilePth,saveFilePth=""):
+    linesUse = []      
+    ddFileName = os.path.basename(ddFilePth)
+    with open(ddFilePth,'r') as f:
+        for line in tqdm(f):  
+                _evid = line[:9]
+                if int(_evid) in evids:
+                    linesUse.append(line)
+    if saveFilePth=="":
+        saveFilePth=ddFileName+'.subset'
+    with open(saveFilePth,'w') as f:
+        for line in linesUse:
+            f.write(line)

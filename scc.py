@@ -146,8 +146,14 @@ def data_scc(tmplt_data,st_data,ncom):
                 cc += tmplt_data[ic][k]*st_data[ic][j+k]
                 k+=1
             ic+=1
-        aa = sqrt(norm)/normMaster
-        cc = cc*aa/norm #cc = <f|g>/sqrt((f|f)(g|g))
+        if normMaster == 0:
+            aa = 0
+        else:
+            aa = sqrt(norm)/normMaster
+        if norm == 0:
+            cc = 0
+        else:
+            cc = cc*aa/norm #cc = <f|g>/sqrt((f|f)(g|g))
         if(cc>=ccmax):
             ccmax = cc
             aamax = aa

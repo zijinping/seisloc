@@ -1,4 +1,5 @@
 import numpy as np
+from obspy import Stream, Trace
 
 def lsfit(G,d,W=1,full=False):
     """
@@ -82,5 +83,53 @@ def weighted_lsfit(G,dobs,W=1,criteria=0.01):
         mdiffNorm = np.linalg.norm(mdiff)
         if mdiffNorm < 1E-6:
             break
-                                                                                                                                                                                                           
     return mnew
+
+def gaussian_filter(kernel_size, sigma=4, muu=0):
+            
+    # Initializing value of x,y as grid of kernel size
+    # in the range of kernel size
+            
+    x, y = np.meshgrid(np.linspace(-1, 1, kernel_size),
+                       np.linspace(-1, 1, kernel_size))
+    dst = np.sqrt(x**2+y**2)
+            
+    # lower normal part of gaussian
+    normal = 1/(2.0 * np.pi * sigma**2)
+            
+    # Calculating Gaussian filter
+    gauss = np.exp(-((dst-muu)**2 / (2.0 * sigma**2))) * normal
+    return gauss
+            
+def avg_filter(kernel_size,dimension=2):
+    if dimension==2:
+        matrix = np.ones((kernel_size,kernel_size))
+    elif dimension==1:
+        matrix = np.ones(kernel_size)
+    else:
+        raise Exception(f"Unaccepted dimension value: {dimension}")
+    matrix = matrix/np.sum(matrix)
+    return matrix
+
+def mean_period_taup(st,alpha=0.99):
+    """
+    Calculate mean period of event waveform
+    """
+    stTaup = st.copy()
+    print(len(stTaup))
+    for j,trvel in enumerate(st):
+        delta = trvel.stats.delta
+        tracc = trvel.copy()
+        tracc.data[:-1] = (trvel.data[1:]-trvel.data[:-1])/delta
+        tracc.data[-1] = 0
+        Xi=0
+        Di=0
+        tauPs = []
+        for i in range(len(trvel.data)):
+            Xi=alpha*Xi+trvel.data[i]**2
+            Di=alpha*Di+tracc.data[i]**2
+            tauPi = 2*np.pi*np.sqrt(Xi/Di)
+            tauPs.append(tauPi)
+        stTaup[j].data = np.array(tauPs)
+    
+    return stTaup

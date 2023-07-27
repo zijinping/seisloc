@@ -5,7 +5,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from obspy import UTCDateTime
 from obspy.geodetics import gps2dist_azimuth
-from seisloc.dd import loadDD
+from seisloc.dd import load_DD
 from seisloc.hypoinv import Hypoinv
 from seisloc.geometry import in_rectangle,loc_by_width
 from math import floor,ceil
@@ -31,7 +31,7 @@ class Catalog():
         if locFile != None:
             if not os.path.exists(locFile):
                 raise Exception(f"{locFile} not existed!")
-            self.dict,_ = loadDD(locFile)
+            self.dict,_ = load_DD(locFile)
             print("successfully load catalog file: "+locFile)
             self.init()
         else:
@@ -569,24 +569,24 @@ class Catalog():
             return ax
         
     def day_hist(self,
-                 reftime=UTCDateTime(2019,1,1,0,0,0),
+                 refTime=UTCDateTime(2019,1,1,0,0,0),
                  xlim=[],
                  ylim=[],
                  color='b',
-                 edgecolor='k',
-                 plot_months=True,
-                 figsize=None,
-                 plt_show = True):
+                 edgeColor='k',
+                 plotMonths=True,
+                 figSize=None,
+                 pltShow = True):
         """
         Plot events by day-quantity in a histogram plot.
         Parameters:
-            -reftime: Reference time for plot
+            -refTime: Reference time for plot
         """
         ref_list = []
         time_list = []
         for key in self.dict.keys():
             _,_,_,_,etime = self.dict[key]
-            ref_list.append((etime-reftime)/(24*60*60))
+            ref_list.append((etime-refTime)/(24*60*60))
 
         min_day=floor(min(ref_list))
         max_day=ceil(max(ref_list))
@@ -601,9 +601,9 @@ class Catalog():
         # The top x-axis marks year and month in YYYYMM
         tick_list_1 = [] # Store the position number
         tick_list_2 = [] # Store the tick text
-        ref_year = reftime.year
-        ref_month = reftime.month
-        ref_day = reftime.day
+        ref_year = refTime.year
+        ref_month = refTime.month
+        ref_day = refTime.day
         if ref_day == 1:
             tick_list_1.append(0)
             tick_list_2.append(str(ref_year)+str(ref_month).zfill(2))
@@ -615,13 +615,13 @@ class Catalog():
             tmp_year = loop_time.year
             tmp_month = loop_time.month
             loop_time = UTCDateTime(tmp_year,tmp_month,1)
-            diff_days = (loop_time - reftime)/(24*60*60)
+            diff_days = (loop_time - refTime)/(24*60*60)
             if diff_days > (max_day):
                 status=False
             else:
                 tick_list_1.append(diff_days)
                 tick_list_2.append((str(tmp_month).zfill(2)))
-        if plot_months:
+        if plotMonths:
             ax2 = ax1.twiny()
             ax2.set_xlim([0,max_day])
             ax2.plot(0,0,'k.')
@@ -629,14 +629,14 @@ class Catalog():
             ax2.set_xlabel("date")
         if xlim!=[]:
             ax1.set_xlim(xlim)
-            if plot_months:
+            if plotMonths:
                 ax2.set_xlim(xlim)
         if ylim!=[]:
             plt.ylim(ylim)
         ax1.set_xlabel("Time, days")
         ax1.set_ylabel("event quantity")
 
-        if plt_show == True:
+        if pltShow == True:
             plt.show()
 
     def diffusion_plot(self,refid=None,refloc=[],diff_cfs=[],unit="day",xlim=[],ylim=[],plt_show=True):
@@ -979,3 +979,15 @@ def dtcc_otc(dtcc_old,inv_old_file,inv_new_file):
         if status == True:
             f.write(line+"\n")
     f.close()
+
+def read_txt_cata(cataPth):
+    with open(cataPth,'r') as f:
+        edict={}
+        for line in f:
+            line = line.strip()
+            _evid,_evlo,_evla,_evdp,_emag,_eday,_etime=line.split()
+            edict[int(_evid)] = [float(_evlo),float(_evla),float(_evdp),float(_emag),UTCDateTime(_etime)]
+    cata = Catalog(locFile=None)
+    cata.dict = edict
+    cata.init()
+    return cata

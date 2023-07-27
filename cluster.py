@@ -4,12 +4,13 @@ import copy
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib
+from matplotlib.colors import LinearSegmentedColormap
 from scipy.cluster.hierarchy import average, fcluster
 from scipy.spatial.distance import pdist
 from scipy.cluster.hierarchy import dendrogram, linkage
-from seisloc.dd import loadDD
+from seisloc.dd import load_DD
+from obspy.geodetics import gps2dist_azimuth
 import pickle
-from scipy.cluster.hierarchy import fcluster
 
 def load_dtcc(dtcc="dt.cc",save_pkl=False,phases=['P','S'],minobs=4,mean_cc_threshold=0.7):
     """
@@ -80,7 +81,8 @@ class Eqcluster():
                  dtcc_save_pkl=True,
                  dtcc_phases=['P','S'],
                  dtcc_minobs=4,
-                 dtcc_mean_cc_threshold=0.7):
+                 dtcc_mean_cc_threshold=0.7,
+                 distWt=0):
         self.cc_threshold = dtcc_mean_cc_threshold
         self.pairs = load_dtcc(dtcc_file,
                                save_pkl=dtcc_save_pkl,
@@ -102,24 +104,44 @@ class Eqcluster():
             if len(k1[0])==1 and len(k2[0])==1:
                 self.cc_evids.append(evid1)
                 self.cc_evids.append(evid2)
-                self.pairs_in.append(pair)                 
+                self.pairs_in.append(pair)
             if len(k1[0])>1 and len(k2[0])>1:
                 raise Exception("There are duplicated event ids")
         self.cc_evids = np.array(list(set(self.cc_evids)))
         self.cc_evids.sort()
-        
+
         # building cc_matrix
-        self.cc_matrix = np.zeros((len(self.cc_evids),len(self.cc_evids)))
+        self.cc_matrix = np.ones((len(self.cc_evids),len(self.cc_evids)))
+        self.cluster_matrix = np.ones((len(self.cc_evids),len(self.cc_evids)))
+        for i in range(self.cc_matrix.shape[0]):
+            self.cc_matrix[i,i] = 0
+            self.cluster_matrix[i,i] = 0
+        if distWt>0:
+            for i in range(len(self.cc_evids)):
+                evid1 = self.cc_evids[i]
+                for j in range(i,len(self.cc_evids)):
+                    evid2 = self.cc_evids[j]
+                    loEvid1 = self.dd_dict[evid1][0]
+                    laEvid1 = self.dd_dict[evid1][1]
+                    dpEvid1 = self.dd_dict[evid1][2]
+                    loEvid2 = self.dd_dict[evid2][0]
+                    laEvid2 = self.dd_dict[evid2][1]
+                    dpEvid2 = self.dd_dict[evid2][2]
+                    dist12,_,_ = gps2dist_azimuth(laEvid1,loEvid1,laEvid2,loEvid2)
+                    dist3D = np.sqrt((dist12/1000)**2 + (dpEvid1-dpEvid2)**2)
+                    self.cluster_matrix[i,j] += distWt*dist3D
+                    self.cluster_matrix[j,i] += distWt*dist3D
         for pair in self.pairs_in:
             evid1,evid2,cc = pair
             k1 = np.where(self.cc_evids == evid1)
             k2 = np.where(self.cc_evids == evid2)
-            self.cc_matrix[k1[0],k2[0]] = cc
-            self.cc_matrix[k2[0],k1[0]] = cc
-            
+            self.cc_matrix[k1[0],k2[0]] -= cc
+            self.cc_matrix[k2[0],k1[0]] -= cc
+            self.cluster_matrix[k1[0],k2[0]] -= cc
+            self.cluster_matrix[k2[0],k1[0]] -= cc
+
         self.in_matrix_evids = self.cc_evids.copy()
-        self.cluster_matrix = self.cc_matrix.copy()
-            
+
     def clustering(self,evids=[],tolerance=0,method='average'):
         """
         Parameters:
@@ -127,7 +149,7 @@ class Eqcluster():
         tolerance: Event with inter-event cc pairs qty lower than tolerance will not be included in clustering
         """
         # build cluster matrix
-        if len(evids) == 0:       
+        if len(evids) == 0:
             self.input_evids = self.evids.copy()
         else:
             self.input_evids = evids
@@ -136,10 +158,10 @@ class Eqcluster():
                 idx = np.where(self.in_matrix_evids==evid)
                 idxs.append(idx[0][0])
             self.update_cluster(idxs)
-        
+
         # apply filter with tolerance
         print(">>> Tolerance filter applied")
-        tmp = (self.cluster_matrix > 0)
+        tmp = (self.cc_matrix < 1)  # True and False matrix
         similar_qty_arr = np.sum(tmp,axis=0)
         kk = np.where(similar_qty_arr>=tolerance)
         self.update_cluster(kk[0])
@@ -217,7 +239,7 @@ class Eqcluster():
                                 va = 'top',
                                 ha = 'center')
             
-    def heatmap(self,source='cluster',xlim=[],ylim=[],figsize=(5,5)):
+    def heatmap(self,source='cluster',xlim=[],ylim=[],figsize=(5,5),showGroups=True):
         """
         Parameters:
         source: 'dd' to show the orignal time-sequence heatmap
@@ -228,25 +250,33 @@ class Eqcluster():
         fig,ax = plt.subplots(1,figsize=figsize)
         if source == "dd":
             disp_matrix = self.cc_matrix
-            for i in range(disp_matrix.shape[0]):
-                disp_matrix[i,i] = 1
+            showGroups = False
             
         elif source == "cluster":            
-            disp_matrix = self.cluster_matrix.copy()
-            for i in range(disp_matrix.shape[0]):
-                disp_matrix[i,i] = 1
-            disp_matrix = disp_matrix[self.dn['leaves']]
-            disp_matrix = disp_matrix[:,self.dn['leaves']]
-
+            self.clustered_matrix = self.cluster_matrix.copy()
+            self.clustered_matrix = self.clustered_matrix[self.dn['leaves']]
+            self.clustered_matrix = self.clustered_matrix[:,self.dn['leaves']]
+            disp_matrix=self.clustered_matrix.copy()
+        disp_matrix = 1-disp_matrix   #clustering is conducted by 1-cc; reverse back to normal cc value
+        for i in range(disp_matrix.shape[0]):
+            disp_matrix[i,i] = 0
         if len(xlim)>0:
-            plt.xlim(ylim)
+            plt.xlim(xlim)
         if len(ylim)>0:
             plt.ylim(ylim)
-        
+        self.group_ticks = []
         colors = ["lightgrey",'lightgrey','blue','red']
         nodes = [0,self.cc_threshold,self.cc_threshold,1]
         cmap = LinearSegmentedColormap.from_list("mycmap",list(zip(nodes,colors)))
         plt.pcolormesh(disp_matrix,cmap=cmap,vmin=0,vmax=1)
+        if showGroups == True:
+            tmpSum=0
+            for i in range(self.catQty):
+                kks = np.where(self.cluster_category==(i+1))
+                print(f"*** Cluster {i+1} has {len(kks[0])} events!")
+                tmpSum+=len(kks[0])
+                self.group_ticks.append(tmpSum)
+                plt.plot([tmpSum,tmpSum],[0,tmpSum],'g-',lw=1)
         plt.gca().set_aspect('equal')
         plt.xlabel("Event No")
         plt.ylabel("Event No")
@@ -258,7 +288,8 @@ class Eqcluster():
         refer to: scipy.cluster.hierarchy.fcluster¶
         """
         self.cluster_category = fcluster(self.Z,max_d,criterion=criterion)
-        print("Num of clusters: ",len(set(self.cluster_category)))
+        self.catQty = len(set(self.cluster_category))
+        print("Num of clusters: ",self.catQty)
         self.clusters_evids = {}
 
         for cluster_id in np.unique(self.cluster_category):
@@ -283,15 +314,15 @@ class Eqcluster():
             lons.append(self.dd_dict[evid][0])
             lats.append(self.dd_dict[evid][1])
             mags.append(self.dd_dict[evid][3])
-        lons = np.array(lons)
-        lats = np.array(lats)
-        mags = np.array(mags)
+        self.in_matrix_lons = np.array(lons)
+        self.in_matrix_lats = np.array(lats)
+        self.in_matrix_mags = np.array(mags)
         cmap = matplotlib.cm.get_cmap('tab20',int(np.max(self.cluster_category)))
         
         if len(clusters)==0:
-            plt.scatter(lons,lats,
+            plt.scatter(self.in_matrix_lons,self.in_matrix_lats,
                         c=self.cluster_category,
-                        s=mags-np.min(mags)+mag_base,
+                        s=self.in_matrix_mags-np.min(self.in_matrix_mags)+mag_base,
                         cmap=cmap,vmin=1,
                         vmax=int(np.max(self.cluster_category))+1)
         else:
@@ -299,9 +330,9 @@ class Eqcluster():
             for cid in clusters:
                 kk = np.where(self.cluster_category==cid)
                 kks = np.concatenate((kks,kk[0]))
-            plt.scatter(lons[kks],lats[kks],
+            plt.scatter(self.in_matrix_lons[kks],self.in_matrix_lats[kks],
                         c=self.cluster_category[kks],
-                        s=mags[kks]-np.min(mags)+mag_base,
+                        s=self.in_matrix_mags[kks]-np.min(self.in_matrix_mags)+mag_base,
                         cmap=cmap,vmin=1,
                         vmax=int(np.max(self.cluster_category))+1)
                 
