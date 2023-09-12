@@ -133,3 +133,26 @@ def mean_period_taup(st,alpha=0.99):
         stTaup[j].data = np.array(tauPs)
     
     return stTaup
+
+def interception_two_lines(line1,line2,linspace=100):
+    """
+    Ouptut the cloest intercepted point on the stright line one w.r.t the line two.
+    line1 format: [[x0,y0,...,z0],[x1,y1,...,z1]]
+    """
+    if not isinstance(line1,np.ndarray):
+        line1 = np.array(line1)
+    if not isinstance(line2,np.ndarray):
+        line2 = np.array(line2)
+    assert len(line1.shape) == 2
+    assert len(line1.shape) == 2
+    lines = np.linspace(line1[0,:],line1[1,:],linspace)
+
+    norms = []
+    for i in range(len(lines)):
+        A = line2[0,:] - lines[i]
+        B = line2[1,:] - lines[i]
+        crossAB = np.cross(A,B)
+        normAB = np.linalg.norm(crossAB)
+        norms.append(normAB)
+    k = np.argmin(norms)
+    return lines[k]

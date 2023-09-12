@@ -4,44 +4,6 @@ import numpy as np
 from seisloc.utils import draw_vel
 from seisloc.sta import load_sta
 
-def load_cnv(cnv_file="velout.cnv"):
-    """
-    Load VELEST output file and return a dict with event id as key
-    the content is [lon,lat,dep,rms]
-    """
-    cont = []
-    with open(cnv_file,'r') as f:
-        for line in f:
-            cont.append(line.rstrip())
-    eve_dict = {}
-    e_count = 1
-    for line in cont:
-        if re.match('\d+',line[:2]):  # event line
-            yr = int(line[:2])
-            mo = int(line[2:4])
-            day = int(line[4:6])
-            hr = int(line[7:9])
-            minite = int(line[9:11])
-            seconds = float(line[12:17])
-            
-            lat = float(line[18:25])
-            if line[25]=="S":
-                lat = -lat
-            lon = float(line[27:35])
-            if line[35]=="W":
-                lon = -lon
-            dep = float(line[36:42])
-            rms = float(line[63:67])
-
-        elif line[:2] == "  " or line=='': # the last line
-            if line[:2] == "  ": # line with event id contained
-                evid = int(line[2:])
-            else:
-                evid = e_count
-                e_count += 1
-            eve_dict[evid] = [lon,lat,dep,rms]
-    return eve_dict
-
 def cnv_add_evid(vel_in,vel_out="velout.cnv",output_file="velout.cnv.id"):
     """
     The input VELEST cnv file contains event id information which could be 

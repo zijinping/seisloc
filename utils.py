@@ -649,10 +649,16 @@ def read_line_values(line,vtype="float"):
             raise Exception("Unrecognized value type: ",vtype)
     return values
 
-def load_config(confFile):
-    with open(confFile,'r') as f:
+def load_para(paraFile):
+    """
+    load configuration file and return a dictionary
+    """
+    paraDict = {}
+    with open(paraFile,'r') as f:
         for line in f:
             line = line.strip()
+            if line=="":
+                continue
             if line[0]=="#":
                 continue
             splits = re.split("=",line,maxsplit=1)
@@ -665,5 +671,6 @@ def load_config(confFile):
                     val = int(val)
                 else:
                     val = float(val)
+            paraDict[para]=val
 
-            globals()[para]=val
+    return paraDict

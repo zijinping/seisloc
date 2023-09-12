@@ -161,7 +161,7 @@ class Eqcluster():
 
         # apply filter with tolerance
         print(">>> Tolerance filter applied")
-        tmp = (self.cc_matrix < 1)  # True and False matrix
+        tmp = (self.cluster_matrix < 1)  # True and False matrix
         similar_qty_arr = np.sum(tmp,axis=0)
         kk = np.where(similar_qty_arr>=tolerance)
         self.update_cluster(kk[0])

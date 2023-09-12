@@ -440,7 +440,7 @@ def pha_subset(pha_file,loc_filter,obs_filter=8,out_file=None):
     """
     *.pha file is the input file for hypoDD ph2dt, this function subset the
     pha file by the boundary condition and the minimum observation condition.
-    The output file is a file with ".st" suffix
+    The output file is a file with ".subset" suffix
 
     Parameters
     ----------
@@ -452,7 +452,7 @@ def pha_subset(pha_file,loc_filter,obs_filter=8,out_file=None):
 
     lon_min, lon_max, lat_min, lat_max = loc_filter
     if out_file == None:
-        out_file = pha_file+".st"
+        out_file = pha_file+".subset"
     f = open(out_file,"w")
     f.close()
     pha_content = []

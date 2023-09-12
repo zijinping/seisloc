@@ -115,7 +115,7 @@ def sta2inv(sta_file,out_file="sta.inv",ele_zero=True):
     sta_dict =load_sta(sta_file)
     to_inv_sta_file(sta_dict,out_file,ele_zero=True)  # Write into files
 
-def to_dd_sta_file(sta_dict,out_file="sta.dd",ele_zero=True):
+def to_dd_sta_file(sta_dict,out_file="netsta.dd",ele_zero=True):
     f_dd = open(out_file,'w')
     for net in sta_dict.keys():
         for sta in sta_dict[net].keys():
@@ -309,6 +309,7 @@ class Sta():
             elif isinstance(net,list):
                 for kk in net:
                     self.dict[kk] = dict_copy[kk]
+        self.get_locs()
         return self
     
     def subset(self,xlim=[],ylim=[]):
@@ -325,14 +326,14 @@ class Sta():
         
         return self
     
-    def sta2inv(self):
-        to_inv_sta_file(self.dict,ele_zero=True)
+    def sta2inv(self,ele_zero=True):
+        to_inv_sta_file(self.dict,ele_zero=ele_zero)
         
-    def sta2dd(self):
-        to_dd_sta_file(self.dict,ele_zero=True)
+    def sta2dd(self,ele_zero=True):
+        to_dd_sta_file(self.dict,ele_zero=ele_zero)
         
-    def sta2vel(self):
-        to_vel_sta_file(self.dict,ele_zero=True)
+    def sta2vel(self,ele_zero=True):
+        to_vel_sta_file(self.dict,ele_zero=ele_zero)
     
     def __repr__(self):
         self.get_locs()
