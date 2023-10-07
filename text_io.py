@@ -123,7 +123,7 @@ def write_arc(fileName,arc):
 
 def write_cnv(cnv,cnvFilePth="vel.cnv",staChrLen=6):
     f = open(cnvFilePth,'w')
-    for evstr in cnv.keys():
+    for evstr in sorted(cnv.keys()):
         evla = cnv[evstr]["evla"]
         evlo = cnv[evstr]["evlo"]
         evdp = cnv[evstr]["evdp"]
@@ -150,7 +150,8 @@ def write_cnv(cnv,cnvFilePth="vel.cnv",staChrLen=6):
         if staChrLen==6:
             f.write("    \n")
         else:
-            f.write(f"   {str(evid).zfill(6)}\n")
+            #f.write(f"   {str(evid).zfill(6)}\n")
+            f.write(f"         \n")
     f.write("9999")              # indicates end of file for VELEST
     f.close()
     
@@ -271,7 +272,10 @@ def read_cnv_event_line(line):
         lon = -lon         
     evdp = float(line[36:43])
     emag = float(line[45:50])
-    maxStaAzGap=int(line[54:57])                                                                                                                                                                      
+    if line[54:57] == "   ":
+        maxStaAzGap = 0
+    else:
+        maxStaAzGap=int(line[54:57])
     rms = float(line[63:67])
     
     return evstr,etime,evlo,evla,evdp,emag,maxStaAzGap,rms
@@ -301,11 +305,13 @@ def load_cnv(cnv_file="velout.cnv"):
     the content is [lon,lat,dep,rms]
     """       
     cnv = {}
-    lines = []                  
+    lines = []
     with open(cnv_file,'r') as f:  
-        for line in f: lines.append(line.rstrip())                
+        for line in f:
+            lines.append(line.rstrip())                
     ecount = 0                  
     for line in lines:
+        #print(line)
         if re.match('\d+',line[:2]):  # event line
             if line[:4] == "9999":    # end marker
                 continue

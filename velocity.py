@@ -12,5 +12,7 @@ def draw_vel(dep_list,vel_list,ax=None,color='k',linestyle='-',label=""):
         points_list.append([dep_list[i],vel_list[i]])
         
     points_list = np.array(points_list)
+    if ax==None:
+        ax = plt.gca()
     line, = ax.plot(points_list[:,1],points_list[:,0],color=color,linestyle=linestyle,label=label)
     return line
