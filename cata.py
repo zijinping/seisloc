@@ -552,16 +552,17 @@ class Catalog():
         if plt_show == True:
             plt.show()
         
-    def depth_hist(self,mag_threshold=-9,depthmin=0,depthmax=10,gap=0.5,pltShow=True):
+    def depth_hist(self,mag_threshold=-9,depthmin=0,depthmax=10,gap=0.5,ax=None,pltShow=True,color='grey',edgecolor='k'):
         bins=np.arange(depthmin,depthmax,gap)
-        fig,ax = plt.subplots(1,1,figsize=(6,8))
+        if ax==None:
+            fig,ax = plt.subplots(1,1,figsize=(6,8))
         ax.xaxis.tick_top()
         ax.xaxis.set_label_position("top")
-        ax.set_ylabel("Depth (km)",fontsize=16)
-        ax.set_xlabel("Event Qty",fontsize=16)
+        ax.set_ylabel("Depth (km)",fontsize=14)
+        ax.set_xlabel("Event Qty",fontsize=14)
         kk = np.where(self.locs[:,3]>=mag_threshold)
         hist,bins = np.histogram(self.locs[:,2],bins=bins)
-        ax.barh(bins[:-1]+gap/2,hist,height=gap,color='gray',edgecolor='k')
+        ax.barh(bins[:-1]+gap/2,hist,height=gap,color=color,edgecolor=edgecolor)
         ax.set_ylim([depthmax,depthmin])
         if pltShow:
             plt.show()

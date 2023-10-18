@@ -277,6 +277,7 @@ def write_dtcc(dtccDir="0dtcc",minLink = 4):
             continue
         csvPth = os.path.join(dtccDir,csv)
         df = pd.read_csv(csvPth)
+        dfAll = pd.concat([dfAll,df],ignore_index=True)
         dfAll = dfAll.append(df)
     print(">>> Writing dt.cc file ...")
     dfAllSort = dfAll.sort_values(["id1","id2",'sta','pha'])
