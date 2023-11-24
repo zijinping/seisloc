@@ -136,63 +136,97 @@ def phs_add_mag(phs_file,mag_file):
 
 
 
-def phs_subset(phs_file,evid_list=[],loc_filter=[]):
+def phs_subset(
+        phsFile,
+        evidLst=[],
+        locBdy=[],
+        startTime=None,
+        endTime=None,
+        outFile="",
+        reIndex=False,
+        startEvid=1
+        ):
     """
     subset the *.phs file by event id list or by region location
-    len(evid_list) == 0 means no evid filter applied
-    len(loc_filter) == 0 means no location filter applied
+    evidLst == [] means no evid filter applied
+    locBdy == [] means no location filter applied
 
     Parameters:
-        loc_filter in format [lon_min,lon_max,lat_min,lat_max]
+    |   phsFile: HYPOINVERSE archieve file
+    |   evidLst: selection of events base on evids
+    |    locBdy: selction of events according to location boundary
+    |   outFile: output file path. Default "" will save as phsFile+".sel"
+    |   reIndex: True for re-index events
+    | startEvid: startEvid for re-index events
     """
-    evid_filt = False
-    loc_filt = False
+    #----- Preprocessing -----
+
+    evidFltMkr = False
+    locFltMkr = False
     
-    if len(evid_list) > 0:
-        evid_filt = True
+    if len(evidLst) > 0: evidFltMkr = True
 
-    if len(loc_filter) > 0:
-        loc_filt = True
-        if len(loc_filter)!=4:
-            raise Exception(f"Values qty in loc_filter is {len(loc_filter)},should be 4.")
-        lon_min,lon_max,lat_min,lat_max = loc_filter
+    if len(locBdy) > 0:
+        locFltMkr = True
+        if len(locBdy)!=4:
+            raise Exception(
+                f"Values qty in locBdy is {len(locBdy)},should be 4."
+                )
+        loMin,loMax,laMin,laMax = locBdy
 
-    cont = [] 
-    with open(phs_file,'r') as f:
+    #----- Main content -----
+    cont = []
+    with open(phsFile,'r') as f:
         for line in f:
             line = line.rstrip()
             cont.append(line)
-    output = []
-    tmp = []
+
+    out = []
+    cache = []
+    loopEvid = startEvid
     for line in cont:
-        tmp.append(line)
-        if re.match("\d+",line[:4]):
+        cache.append(line)
+        if re.match("\d+",line[:4]):       # Event head line
             lat = int(line[16:18])+int(line[19:23])*0.01/60
             if line[18] == "S":
                 lat = -lat
             lon = int(line[23:26])+int(line[27:31])*0.01/60
             if line[26]=="W":
                 lon = -lon
+            etime = UTCDateTime.strptime(line[:16],"%Y%m%d%H%M%S%f")
         if line[:4]== "    ": # last line of one event
-            record_status = True
+            recordMkr = True
             evid = int(line[66:72])
-            if evid_filt == True:
-                if evid not in evid_list:
-                    record_status = False
-            if loc_filt == True:
-                if lat<lat_min or lat>lat_max or lon<lon_min or lon>lon_max:
-                    record_status = False
+            if evidFltMkr == True:
+                if evid not in evidLst:
+                    recordMkr = False
+            if locFltMkr == True:
+                if lat<laMin or lat>laMax or lon<loMin or lon>loMax:
+                    recordMkr = False
 
-            if record_status == True:
-                for line in tmp:
-                    output.append(line)
-            tmp = []               # reset to empty
-                
-    with open(phs_file+".sel",'w') as f:
-        for line in output:
+            if startTime != None:
+                if etime < startTime:
+                    recordMkr = False
+            if endTime != None:
+                if etime > endTime:
+                    recordMkr = False
+
+            if recordMkr == True:
+                for line in cache[:-1]:
+                    out.append(line)
+                if reIndex == False:
+                    out.append(cache[-1])
+                else:
+                    out.append(format(loopEvid,'72d'))
+                    loopEvid += 1
+
+            cache = []               # reset to empty
+    if outFile=='':
+        outFile = phsFile+".sel"
+    with open(outFile,'w') as f:
+        for line in out:
             f.write(line+"\n")
     f.close()
-
 
 def load_sum_evid(sum_file):
     """

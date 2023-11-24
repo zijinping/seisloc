@@ -7,6 +7,7 @@ import logging
 from obspy.geodetics import gps2dist_azimuth
 import subprocess
 from seisloc.math import lsfit,weighted_lsfit
+from matplotlib import path
 
 def spherical_dist(lon_1,lat_1,lon_2,lat_2):
     """
@@ -64,6 +65,14 @@ def in_rectangle(locs,alon,alat,blon,blat,width,mode='normal'):
             results[i,0]=1
             results[i,1]=proj_length
     return results
+
+def in_polygon(locs,polygon):
+    """
+    locs,polygon: two-dimensional numpy array or list
+    return a boolean array
+    """
+    p = path.Path(polygon)
+    return p.contains_points(locs)
 
 def in_ellipse(xy_list,width,height,angle=0,xy=[0,0]):
     """
@@ -274,7 +283,7 @@ def loc_by_width_sphe(alon,alat,blon,blat,width,direction='left'):
             bblat = blat+dlon/np.abs(dlon)*width
         bblon = blon   
     elif dlat==0 and dlon==0:
-        raise Error("Point a and b shouldn't have the same location")
+        raise Error("Point a and b shouldn't be the same location")
     return bblon*180/pi,bblat*180/pi
 
 def cartesian_rotate(xy,center=[0,0],degree=0):
@@ -716,7 +725,7 @@ def geo_az_from_xy(x,y):
     
     return strikeDeg
     
-def strike_dip_from_locs(lons,lats,deps,W=1):
+def strike_dip_from_locs(lons,lats,deps,refLon=None,refLat=None,W=1):
     '''
     only applicable for dimension that earthquake spherical effect is weak
     lons,lats: 1-D longitude and latitude numpy array
@@ -732,11 +741,12 @@ def strike_dip_from_locs(lons,lats,deps,W=1):
     assert len(lons.shape) == 1 and len(lats.shape)==1 and len(deps.shape)==1
     assert len(lons) == len(lats) and len(lons) == len(deps)
     #--------------- preprocessing ---------------
-    
-    lonMean = np.mean(lons)
-    latMean = np.mean(lats)
-    xs = (lons-lonMean)*111.1*np.cos(np.deg2rad(latMean))
-    ys = (lats-latMean)*111.1
+    if refLon == None:
+        refLon = np.mean(lons)
+    if refLat == None:
+        refLat = np.mean(lats)
+    xs = (lons-refLon)*111.1*np.cos(np.deg2rad(refLat))
+    ys = (lats-refLat)*111.1
     rs = np.sqrt(xs**2+ys**2)
     if np.max(rs) >100:
         print("Warning: the raidus exceeds 100 km!")
@@ -746,12 +756,12 @@ def strike_dip_from_locs(lons,lats,deps,W=1):
     G[:,1] = ys
     dobs = deps
     m = weighted_lsfit(G,dobs,W)
-    meanZ = m[2]
+    refZ = m[2]
     dipAzDeg = geo_az_from_xy(m[0],m[1])
     strikeAzDeg=dipAzDeg-90
     if strikeAzDeg <0:
         strikeAzDeg += 360
     
-    dipDeg = np.rad2deg(np.arctan(1/np.linalg.norm(m[:2])))
+    dipDeg = 90-np.rad2deg(np.arctan(1/np.linalg.norm(m[:2])))
     
-    return strikeAzDeg, dipDeg, meanZ
+    return strikeAzDeg, dipDeg, refZ

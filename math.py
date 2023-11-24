@@ -48,9 +48,11 @@ def lsfit(G,d,W=1,full=False):
         return m, sigmad2,us2uT*sigmad2
     return m
 
-def weighted_lsfit(G,dobs,W=1,criteria=0.01):
+def weighted_lsfit(G,dobs,W=1,wtMode='log10',wtReciStdMax=5,criteria=0.01,debug=False):
     """ 
-    Residual variation criteria for output results: default 0.01(1%)
+    Conduct iterative lsfit until condition fulfilled.
+    wtMode: mode for re-weight. 'log10': wt=log10(abs(reciprocal(res))/min(abs(reciprocal)))
+    criteria: If ratio of change of m is smaller than the criteria, the iteration will stop
     """
     if isinstance(W,int):
         W = np.eye(G.shape[0],G.shape[0])
@@ -59,29 +61,31 @@ def weighted_lsfit(G,dobs,W=1,criteria=0.01):
     assert len(W.shape) == 2 and W.shape[0] == W.shape[1]
     
     mnew,sigmad2,covar = lsfit(G,dobs,W,full=True)
-    dpre = np.matmul(G,mnew)
-    dres = np.abs(dobs-dpre)
-    dresReci = 1/dres       # Reciprocal
-    midVal = np.median(dresReci)
-    ks = np.where(dresReci>3*midVal)
-    dresReci[ks] = 3*midVal        
-    Wres = np.diag(dresReci)
- 
+    dpre = np.matmul(G,mnew)     # prediction
+    dres = np.abs(dobs-dpre)     # residual
+    dresReci = 1/dres            # Reciprocal
+    if wtMode == "log10":
+        Wres = np.diag(W*np.log10(dresReci/np.min(dresReci)))
+    count = 1
+    if debug: print("Initial weighted residual: ",np.linalg.norm(Wres*dres))
     while True:
         mold = mnew
-        Wnew = W*Wres
-        dresWt = np.abs(Wnew@dres)
-        mnew,sigmad2New,covarNew = lsfit(G,dobs,Wnew,full=True)
+        mnew,sigmad2New,covarNew = lsfit(G,dobs,Wres,full=True)
         dres = np.abs(dobs-np.matmul(G,mnew))
+        if debug:
+            print("max/min/norm residual: ",np.max(dres),np.min(dres),np.linalg.norm(dres*Wres))
         dresReci = 1/dres       # Reciprocal
-        midVal = np.median(dresReci)
-        ks = np.where(dresReci>3*midVal)
-        dresReci[ks] = 3*midVal        
-        Wres = np.diag(dresReci)           
+        #>>>>> weighting function >>>>>
+        Wres = np.diag(W*np.log10(dresReci/np.min(dresReci)))
+        #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
               
         mdiff = np.abs(mold-mnew)
+        moldNorm = np.linalg.norm(mold)
         mdiffNorm = np.linalg.norm(mdiff)
-        if mdiffNorm < 1E-6:
+        count += 1
+        if mdiffNorm/moldNorm < criteria:
+            if debug:
+                print(f"Iteration for {count} time timess")
             break
     return mnew
 

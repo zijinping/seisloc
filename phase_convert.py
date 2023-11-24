@@ -432,12 +432,13 @@ def sc2phs(file_list=[],trims=[None,None,None,None],magThreshold=None,baseid=1,o
     output_content=[]
     input_content = []
     for file in file_list:
-        with open(file,"r") as f:
+        with open(file,"r",encoding="gbk") as f:
             for line in f:
                 input_content.append(line.rstrip())
         f.close()
     evid= baseid-1
     for line in tqdm(input_content):
+        print(line)
         if re.match("\d+",line[3:7]) and line[7]=="/":#then it is a event line
             record_status=True
             e_year = line[3:7]
@@ -498,7 +499,12 @@ def sc2phs(file_list=[],trims=[None,None,None,None],magThreshold=None,baseid=1,o
                 part5 = " ".rjust(21," ")+str(int(e_mag*100)).zfill(3)
                 output_content.append(part1+part2+part3+part4+part5)
                                   
-        elif record_status==True: 
+        elif record_status==True:   # process phase line
+            # >>>>> a bug >>>>>
+            if len(line)>=26:
+                if line[25] == "-":
+                    line = line[:25]+line[26:]
+            # <<<<<<<<<<<<<<<<<
             if line[0:2]!="  ":   
                 net = line[0:2]   
                 sta = re.split(" +",line[3:8])[0]

@@ -278,14 +278,13 @@ def write_dtcc(dtccDir="0dtcc",minLink = 4):
         csvPth = os.path.join(dtccDir,csv)
         df = pd.read_csv(csvPth)
         dfAll = pd.concat([dfAll,df],ignore_index=True)
-        dfAll = dfAll.append(df)
     print(">>> Writing dt.cc file ...")
     dfAllSort = dfAll.sort_values(["id1","id2",'sta','pha'])
     evid1s = sorted(np.unique(dfAllSort['id1']))
-    f = open(os.path.join(dtccDir,'dt.cc'),'w')
     id1Use = -1
     id2Use = -2
     lines = []
+    f = open(os.path.join(dtccDir,'dt.cc'),'w')
     for i, df in tqdm(dfAllSort.iterrows()):
         if df.id1 != id1Use or df.id2 != id2Use:
             if len(lines) > minLink+1: # phases + headlines
@@ -293,12 +292,14 @@ def write_dtcc(dtccDir="0dtcc",minLink = 4):
                     f.write(line+"\n")
             id1Use = df.id1
             id2Use = df.id2
+            # Initiate the line
             lines = [f"# {format(df.id1,'5d')} {format(df.id2,'5d')} 0"]
         if df.id1 == id1Use and df.id2 == id2Use:
             lines.append(f"{format(df['sta'],'<7s')} {format(df['dt'],'7.4f')} {format(df['cc'],'5.3f')} {df['pha']}")
+    if len(lines) > minLink + 1:
+        for line in lines:
+            f.write(line+"\n")
     print("<<< dt.cc files generated! <<<")
-
-
 
 def scc_input_load_arr(tarBase,markerP="P",markerS="S"):
     """
@@ -343,13 +344,21 @@ def scc_input_write_arr(arrDir,arrDict):
             for line in arrDict[key]:
                 f.write(line)
 
-def scc_input_wf_bp(srcEveDir,tarEveDir,freqmin,freqmax,zerophase=True):
+def scc_input_wf_bp(srcEveDir,tarEveDir,freqmin,freqmax,zerophase=True,excludeNetstas=[]):
     if not os.path.exists(tarEveDir):
         os.mkdir(tarEveDir)
     for sac in os.listdir(srcEveDir):
-        st = obspy.read(os.path.join(srcEveDir,sac))
-        chn = st[0].stats.channel
+        sacPth = os.path.join(srcEveDir,sac)
+        try:
+            st = obspy.read(sacPth)
+        except:
+            print("Fail to read the sac file ",sacPth)
+            continue
+        net = st[0].stats.network
         sta = st[0].stats.station
+        chn = st[0].stats.channel
+        if net+sta in excludeNetstas:
+            continue
         st.detrend("linear"); st.detrend("constant")
         st.filter("bandpass",freqmin=freqmin,freqmax=freqmax,zerophase=True)
         if chn[-1]=="N":
@@ -359,42 +368,42 @@ def scc_input_wf_bp(srcEveDir,tarEveDir,freqmin,freqmax,zerophase=True):
         if chn[-1]=="Z":
             st[0].write(os.path.join(tarEveDir,f"{sta}.z"),format="SAC")    
     
-def scc_input(srcWfBase,tarBase,freqmin,freqmax,markerP="a",markerS="t0",parallel=False,parallelCores=10,zerophase=True):
+def scc_input(srcWfBase,tarBase,freqmin,freqmax,markerP="a",markerS="t0",zerophase=True,excludeNetstas=[]):
     """
     Prepare the sliding window cross-correlation input files
     Parameters:
       srcWfBase: The source waveform folder
       tarBase: The target multiprocessing project folder
     """
+    arrDir = os.path.join(tarBase,'arr_files')
+    bpwfDir = os.path.join(tarBase,'eve_wf_bp')
+    '''
     if not os.path.exists(tarBase):
         os.mkdir(tarBase)
-    arrDir = os.path.join(tarBase,'arr_files')
     if os.path.exists(arrDir):
         print(" arrDir: 'arr_files' exsited and will be removed!")
         shutil.rmtree(arrDir)
     os.mkdir(arrDir)
-    bpwfDir = os.path.join(tarBase,'eve_wf_bp')
     if os.path.exists(bpwfDir):
         print("bpwfDir: 'eve_wf_bp' exsited and will be removed!")
         shutil.rmtree(os.path.join(tarBase,'eve_wf_bp'))
     os.mkdir(bpwfDir)
+
     _days = os.listdir(srcWfBase)
     _days.sort()
     for _day in _days:
         os.mkdir(os.path.join(tarBase,'eve_wf_bp',_day))
         _eves = os.listdir(os.path.join(srcWfBase,_day))
         _eves.sort()
-        if parallel: pool = mp.Pool(processes=parallelCores)
         for _eve in _eves:
             srcEveDir = os.path.join(srcWfBase,_day,_eve)
             if not os.path.isdir(srcEveDir):
                 continue
             tarEveDir = os.path.join(tarBase,'eve_wf_bp',_day,_eve)
-            if parallel: pool.apply_async(scc_input_wf_bp,args=(srcEveDir,tarEveDir,freqmin,freqmax,zerophase))
-            else: scc_input_wf_bp(srcEveDir,tarEveDir,freqmin=freqmin,freqmax=freqmax,zerophase=zerophase)
-        if parallel: pool.close(); pool.join()
+            scc_input_wf_bp(srcEveDir,tarEveDir,freqmin=freqmin,freqmax=freqmax,zerophase=zerophase,excludeNetstas=excludeNetstas)
       
     print("Waveform bandpass finished!")
+    '''
 #----------- Generate arr files ----------------------------------------    
     print(">>> Now prepare arrival files")
     print(">>> Loading arrivals from tarWfDir 'eve_bp_wf' ")
