@@ -377,7 +377,6 @@ def scc_input(srcWfBase,tarBase,freqmin,freqmax,markerP="a",markerS="t0",zeropha
     """
     arrDir = os.path.join(tarBase,'arr_files')
     bpwfDir = os.path.join(tarBase,'eve_wf_bp')
-    '''
     if not os.path.exists(tarBase):
         os.mkdir(tarBase)
     if os.path.exists(arrDir):
@@ -403,7 +402,6 @@ def scc_input(srcWfBase,tarBase,freqmin,freqmax,markerP="a",markerS="t0",zeropha
             scc_input_wf_bp(srcEveDir,tarEveDir,freqmin=freqmin,freqmax=freqmax,zerophase=zerophase,excludeNetstas=excludeNetstas)
       
     print("Waveform bandpass finished!")
-    '''
 #----------- Generate arr files ----------------------------------------    
     print(">>> Now prepare arrival files")
     print(">>> Loading arrivals from tarWfDir 'eve_bp_wf' ")
