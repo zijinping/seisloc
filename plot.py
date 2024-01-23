@@ -38,7 +38,7 @@ def segmented_plot(xys,base_time,secs,tick_secs,
     assert isinstance(base_time,UTCDateTime)
     assert len(secs.shape) == 1
     assert len(tick_secs.shape) == 1
-    
+   
     if xlim == []:
         xlim = [np.min(xys[:,0]),np.max(xys[:,0])]
     if ylim == []:
@@ -143,7 +143,7 @@ def intervals_plot(xys,
     base_time, tick_secs = time_interval_ticks(min_time,max_time,interval=interval,unit=method)
     
     diff_time = reftime - base_time
-    secs -= diff_time
+    secs += diff_time
     
     axs = segmented_plot(xys,base_time,secs,tick_secs,
                          xlim=xlim,ylim=ylim,

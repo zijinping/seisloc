@@ -358,7 +358,7 @@ def time_interval_ticks(b_time,e_time,interval=1,unit='month',cut_to_round=True)
     |   b_time: begin time in obspy UTCDateTime format
     |   e_time: end time in obspy UTCDateTime format
     |     unit: interval unit, could be 'year','month','day','hour','minute',or 'second'
-  cut_to_round: round off to the unit provided.default True.
+  cut_to_round: round off to the unit provided (default: True).
                 E.g. unit='month' will round the  base_time to be exactly UTCDateTime(year,month,1)
                 else, base_time = b_time
     Return
@@ -502,6 +502,7 @@ def matrix_show(*args,**kwargs):
     grid_size = 0.6
     cmap = 'cool'
     label_data = True
+    pltShow = True
     for arg in kwargs:
         if arg == "fmt":
             fmt = kwargs[arg]
@@ -549,7 +550,8 @@ def matrix_show(*args,**kwargs):
             plt.yticks([])
             wloop+=w+1
             matrix_id+=1
-    plt.show()
+    if pltShow == True:
+        plt.show()
 
 def layer2linear_vel(inp_depths,inp_vels,linear_nodes):
     """

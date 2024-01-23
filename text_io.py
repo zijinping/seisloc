@@ -1,8 +1,31 @@
 import os
 import re
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 from obspy import UTCDateTime
+
+def load_dtcc(dtccFile,incStas="none"):
+    """
+    Load_dtcc information. If incStas is a list, then only include these stations
+    """
+    assert incStas=="none" or isinstance(incStas,list)
+    data = []
+    with open(dtccFile,'r') as f:
+        for line in f:
+            line = line.rstrip()
+            if line[0] == "#":
+                _,_evid1,_evid2,_ = line.split()
+                evid1,evid2 = map(int,[_evid1,_evid2])
+            else:
+                sta,_dt,_cc,pha = line.split()
+                if incStas!="none" and sta not in incStas:
+                    continue
+                dt,cc = map(float,[_dt,_cc])
+                data.append([evid1,evid2,sta,pha,dt,cc])
+    df = pd.DataFrame(data,columns=["evid1","evid2","sta","pha","dt","cc"])
+
+    return df
 
 def load_taup_tvel(tvelFile):
     tvelDict = {}
@@ -51,15 +74,18 @@ def load_event_dat(eventDatFile="./event.dat",showExampleLine=False):
         eventDatDict[evid]['evlo'] = lon
         eventDatDict[evid]['evla'] = lat
         eventDatDict[evid]['evdp'] = dep
-        eventDatDict[evid]['emag'] = mag
+        eventDatDict[evid]['mag'] = mag
         eventDatDict[evid]['errH'] = eh
         eventDatDict[evid]['errZ'] = ez
         eventDatDict[evid]['rms']  = rms
     return eventDatDict
 
 def write_event_dat(eventDatDict,eventDatFile="event.dat"):
-    if os.path.exists(eventDatFile):
-        raise Exception("Target eventDatFile existed!")
+    """
+    Write event information in the format the same with ph2dt output
+    """
+    #if os.path.exists(eventDatFile):
+        #raise Exception("Target eventDatFile existed!")
     f = open(eventDatFile,'w')
     #_estr=
     for evid in eventDatDict.keys():   
@@ -67,7 +93,7 @@ def write_event_dat(eventDatDict,eventDatFile="event.dat"):
                 format(eventDatDict[evid]['evla'],'>10.4f')+
                 format(eventDatDict[evid]['evlo'],'>11.4f')+
                 format(eventDatDict[evid]['evdp'],'>11.2f')+
-                format(eventDatDict[evid]['emag'],'>7.1f')+
+                format(eventDatDict[evid]['mag'],'>7.1f')+
                 format(eventDatDict[evid]['errH'],'>8.2f')+
                 format(eventDatDict[evid]['errZ'],'>8.2f')+
                 format(eventDatDict[evid]['rms'],'>7.2f')+
@@ -92,7 +118,7 @@ def _write_cnv_file(cnvFile,arc,staChrLen=6):
         evid = arc[evstr]["evid"]
         part1 = evstr[2:8]+" "+evstr[8:12]+" "+evstr[12:14]+"."+evstr[14:16]+" "
         part2 = format(evla,"7.4f")+"N"+" "+format(evlo,"8.4f")+"E"+" "
-        part3 = format(evdp,"7.2f")+"  "+format(emag,"5.2f")+" "
+        part3 = format(evdp,"6.2f")+"  "+format(emag,"5.2f")+" "
         part4 = format(maxStaAzGap,'>6d')+" "+format(rms,'9.2f')
         
         f.write(part1+part2+part3+part4)
@@ -216,7 +242,7 @@ def load_y2000(y2000File,printLine=False,savePkl=False):
             print(line)
         if re.match("\d+",line[:6]):    # line start with digit is summary/event line
             funcReturn = read_y2000_event_line(line)
-            evstr,etime,evlo,evla,evdp,emag,maxStaAzGap,rms = funcReturn[:8]
+            evstr,etime,evlo,evla,evdp,mag,maxStaAzGap,rms = funcReturn[:8]
             ecount += 1
             netstas = []
             arc[evstr] = {} 
@@ -224,8 +250,8 @@ def load_y2000(y2000File,printLine=False,savePkl=False):
             arc[evstr]["evlo"] = evlo
             arc[evstr]["evla"] = evla
             arc[evstr]["evdp"] = evdp
-            arc[evstr]["emag"] = emag
-            arc[evstr]["phase"] = []
+            arc[evstr]["mag"] = mag
+            arc[evstr]["phases"] = []
             arc[evstr]['nsta'] = 0
             arc[evstr]['rms'] = rms
             arc[evstr]['maxStaAzGap']=maxStaAzGap
@@ -241,7 +267,7 @@ def load_y2000(y2000File,printLine=False,savePkl=False):
             if net+sta not in netstas:
                 netstas.append(net+sta)
                 arc[evstr]['nsta'] += 1
-            arc[evstr]["phase"].append([net,sta,phsType,phsTime,res,weightCode])
+            arc[evstr]["phases"].append([net,sta,phsType,phsTime,res,weightCode])
         arc[evstr]["lines"].append(line)
 
     if savePkl:  

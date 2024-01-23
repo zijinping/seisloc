@@ -5,6 +5,49 @@ import numpy as np
 import os
 from seisloc.utils import month_day
 
+def get_trav(st,sta,marker="a"):
+    """
+    Get the marker time from SAC header
+    if marker is a string, then direct get the marker time. The absence 
+    of the corresponding marker time will lead to the return of "0, 'none'".
+
+    If marker is a list, then will sequential process marker one by one and 
+    will return upon the successful load of the travel time. 
+
+    For example, for a dataset of events, the P arrivals are first picked with 
+    marker 'a'. After that, some P arrivals are refined with marker "t3" and 
+    further refined with marker 't5'. Then to get the best travel time, one can
+    use:
+    >>> get_trav2(st,sta,marker=['t5','t3','a'])
+
+    Return:
+    marker_time, marker
+    """
+    status = False   # whether load travel time successfully
+    st=st.select(station=sta)
+    if len(st)==0:
+        raise Exception("No data for station "+sta)
+    if isinstance(marker,str):
+        if hasattr(st[0].stats.sac,marker):
+            trav=getattr(st[0].stats.sac,marker)
+            status = True
+
+    elif isinstance(marker,list):
+        markers = marker
+        for marker in markers:
+            if hasattr(st[0].stats.sac,marker):
+                trav=getattr(st[0].stats.sac,marker)
+                status = True
+                break
+    else:
+        raise Exception("marker should be either a 'str' or a 'list'")
+
+    if status == False:
+        trav=0
+        marker="None"
+
+    return trav,marker
+
 def aligned_sac_datas(tr1,tr2,scc_dt,tb,te,marker='t0'):
     """
     Parameters:

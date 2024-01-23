@@ -11,7 +11,6 @@ from seisloc.geometry import in_rectangle,loc_by_width
 from math import floor,ceil
 from seisloc.statistics import sum_count_Mo,write_sum_count_Mo
 from seisloc.phase_convert import cata2fdsn
-import logging
 from tqdm import tqdm
 
 
@@ -24,7 +23,7 @@ class Catalog():
             dict[evid] = [lon,lat,dep,mag,UTCDateTime]
         example:
         >>> cata = Catalog(locFile=None)
-        >>> cata.dict = cata_dict  # cata_dict is a dictionary follows above format
+        >>> cata.dict = cataDict  # cata_dict is a dictionary follows above format
         >>> cata.init()            # initiation of the class
         >>> print(cata)            # basic information will be printed
         """
@@ -32,24 +31,26 @@ class Catalog():
             if not os.path.exists(locFile):
                 raise Exception(f"{locFile} not existed!")
             self.dict,_ = load_DD(locFile)
-            print("successfully load catalog file: "+locFile)
+            print("[Class Catalog] successfully loaded the catalog file: "+locFile)
             self.init()
         else:
-            print("*** No hypoDD data provided, an empty Catalog created.")
-            print("*** You can define self.dict[evid] = [lon,lat,dep,mag,UTCDateTime]}")
-            print("*** Then run: .init() to initiate the catalog.")
+            print("[Class Catalog] ~~~~~~~~~~~~~~~ Warning ~~~~~~~~~~~~~~~~~")
+            print("[Class Catalog] No hypoDD .reloc file provided, an empty Catalog created.")
+            print("[Class Catalog] You can define self.dict[evid] = [lon,lat,dep,mag,UTCDateTime]}")
+            print("[Class Catalog] Then run: .init() to initiate the catalog.")
             self.dict = {}
 
     def init(self):
         """
         Initiate the catalog
         """
-        print(">>> Initiate the catalog ... ")
+        print("[Class Catalog] Initiate the catalog ... ")
+        self.baseTime = UTCDateTime(2020,1,1)
         self.init_keys()
         self.init_locs()
         self.init_relative_seconds()
         self.sort()
-        print(">>> Initiation complted! ")
+        print("[Class Catalog] Initiation completed! ")
 
     def init_keys(self):
         """
@@ -76,12 +77,10 @@ class Catalog():
         """
         Numpy array to save relative seconds to the first event
         """
-        self.first_key = self.keys[0]
-        self.first_time = self.dict[self.first_key][4]
         self.relative_seconds = []
         for key in self.keys:
             etime = self.dict[key][4]
-            self.relative_seconds.append(etime-self.first_time)
+            self.relative_seconds.append(etime-self.baseTime)
         self.relative_seconds = np.array(self.relative_seconds)
 
     def update_keys(self,idxs):
@@ -136,8 +135,8 @@ class Catalog():
         """
         Trim the dataset with time conditions
         """
-        min_reftime = starttime - self.first_time
-        max_reftime = endtime - self.first_time
+        min_reftime = starttime - self.baseTime
+        max_reftime = endtime - self.baseTime
         
         idxs = np.where((self.relative_seconds>=min_reftime)&\
                         (self.relative_seconds<=max_reftime))
@@ -172,8 +171,7 @@ class Catalog():
               blonlat=[105,30],
               secWidth=0.05,
               crop=False,
-              ax = None,
-              pltShow=True):
+              ax = None):
         """
         Map view plot of earthquakes,earthquake denoted default by black circle
         Parameters:
@@ -202,9 +200,9 @@ class Catalog():
             if figSize != None:
                 plt.figure(figSize=figSize)
         if refTime == None:
-            refTime = self.first_time + np.min(self.relative_seconds)
+            refTime = self.baseTime + np.min(self.relative_seconds)
         if secWidth <=0:
-            raise Error("Width <= 0")
+            raise Exception("Width <= 0")
         # plot all events
         if addSection==True:
             alon = alonlat[0]; alat = alonlat[1]
@@ -226,7 +224,7 @@ class Catalog():
                     marker='o',
                     alpha=1)
         else:
-            shift_seconds = refTime - self.first_time
+            shift_seconds = refTime - self.baseTime
             times_plot = self.relative_seconds-shift_seconds
             if unit=="day":
                 times_plot = times_plot/(24*60*60)
@@ -287,9 +285,6 @@ class Catalog():
         plt.xlabel("Longitude")
         plt.ylabel("Latitude")
         plt.gca().set_aspect("equal")
-
-        if pltShow == True:
-            plt.show()
         
     def vplot(self,
               alonlat,
@@ -300,7 +295,7 @@ class Catalog():
               depmin=0,
               depmax=10,
               size_ratio=1,
-              imp_mag=None,
+              impMag=None,
               reftime = UTCDateTime(2019,3,1),
               cmap=None,
               vmin=0,
@@ -311,7 +306,7 @@ class Catalog():
               drawFig=True,
               drawCb=False,
               drawImpLg=True,
-              pltShow=True):
+              ):
         """
         Description
 
@@ -323,7 +318,7 @@ class Catalog():
         |    depmax: maximum depth in km, e.g. 10 km
         |   figsize: e.g. (5,5). Default None means auto set by matplotlib
         | edgecolor: earthquake marker(circle) edgecolor
-        |   imp_mag: important magnitude. Magnitude larger than this level will be 
+        |   impMag: important magnitude. Magnitude larger than this level will be 
         |            highlighted
         |  reftime: reference time in UTCDateTime used to constrain colormap, if
         |            no colormap provided, seismicity will plotted by default
@@ -332,10 +327,10 @@ class Catalog():
         |      unit: "day","hour", or "second" for vmin and vmax
         |    aspect: aspect ratio setting. Check for plt.gca().set_aspect for detail
         """
-        length_m,_,_ = gps2dist_azimuth(alonlat[1],alonlat[0],blonlat[1],blonlat[0])
-        length_km = length_m/1000
         alon = alonlat[0]; alat = alonlat[1]
         blon = blonlat[0]; blat = blonlat[1]
+        length_m,_,_ = gps2dist_azimuth(alat,alon,blat,blon)
+        length_km = length_m/1000
         results = in_rectangle(self.locs,alon,alat,blon,blat,width/2)
         jj = np.where(results[:,0]>0)
         self.vplotjj = jj
@@ -354,7 +349,7 @@ class Catalog():
                         facecolors='none',
                         s=(self.locs[jj,3]+2)*size_ratio*5)
             else:
-                shift_seconds = reftime - self.first_time
+                shift_seconds = reftime - self.baseTime
                 times_plot = self.relative_seconds[jj]-shift_seconds
                 if unit=="day":
                     times_plot = times_plot/(24*60*60)
@@ -379,11 +374,9 @@ class Catalog():
 
             tmplocs = self.locs[jj]
             tmpresults = results[jj]
-            if imp_mag != None:
-                kk = np.where(tmplocs[:,3]>=imp_mag)
+            if impMag != None:
+                kk = np.where(tmplocs[:,3]>=impMag)
                 if len(kk)>0:
-                    print(tmpresults[kk,1],tmplocs[kk,2],tmplocs[kk,3],edgecolor, \
-                        (tmplocs[kk,3]+2)*size_ratio*50)
                     self.impScatter = plt.scatter(tmpresults[kk,1]*opposite,
                             tmplocs[kk,2],
                             (tmplocs[kk,3]+2)*size_ratio*50,
@@ -392,16 +385,13 @@ class Catalog():
                             marker='*',
                             alpha=1)
                     if drawImpLg:
-                        plt.legend([self.impScatter],[f"M$\geq${format(imp_mag,'4.1f')}"])
+                        plt.legend([self.impScatter],[f"M$\geq${format(impMag,'4.1f')}"])
         
             plt.ylim([depmax,depmin])
             plt.xlim([0,length_km])
             plt.xlabel("distance (km)")
             plt.ylabel("depth (km)")
             plt.gca().set_aspect(aspect)
-
-            if pltShow==True:
-                plt.show()
     
     def MT_plot(self,
                 xlim=[],
@@ -429,14 +419,14 @@ class Catalog():
             denominator = 1
             plt.xlabel("Time (second)")
         if refTime == None:
-            refTime = self.first_time + np.min(self.relative_seconds)
-        print("Reference time is: ", refTime)
+            refTime = self.baseTime + np.min(self.relative_seconds)
+        print("[Class Catalog] Reference time is: ", refTime)
         if len(xlim) == 0:
-            tbtime = self.first_time + np.min(self.relative_seconds)
-            tetime = self.first_time + np.max(self.relative_seconds)
+            tbtime = self.baseTime + np.min(self.relative_seconds)
+            tetime = self.baseTime + np.max(self.relative_seconds)
         if len(xlim) == 1:
             tbtime = refTime+xlim[0]*denominator
-            tetime = self.first_time + np.max(self.relative_seconds)
+            tetime = self.baseTime + np.max(self.relative_seconds)
         if len(xlim) == 2:
             tbtime = refTime+xlim[0]*denominator
             tetime = refTime+xlim[1]*denominator
@@ -504,7 +494,7 @@ class Catalog():
         if len(refloc)>0:
             reflon,reflat,refdep = refloc
         if reftime == None:
-            reftime = self.first_time + np.min(self.relative_seconds)
+            reftime = self.baseTime + np.min(self.relative_seconds)
         '''
         for evid in self.keys:
             etime =self.dict[evid][4]
@@ -726,15 +716,15 @@ class Catalog():
             xlim = [np.min(self.locs[:,0]),np.max(self.locs[:,0])]
         if ylim == []:
             ylim = [np.min(self.locs[:,1]),np.max(self.locs[:,1])]    
-        min_time = self.first_time+np.min(self.relative_seconds)
-        max_time = self.first_time+np.max(self.relative_seconds)
+        min_time = self.baseTime+np.min(self.relative_seconds)
+        max_time = self.baseTime+np.max(self.relative_seconds)
         
         if mb_time == None:
             mb_time = min_time
         if me_time == None:
             me_time = max_time
-        print("Movie start time is: ",mb_time)
-        print("  Movie end time is: ",me_time)
+        print("[Class Catalog] Movie start time is: ",mb_time)
+        print("[Class Catalog]   Movie end time is: ",me_time)
         #---------- cmap -------------------------
         if vmin == None:
             vmin = 0
@@ -779,7 +769,7 @@ class Catalog():
             eve_arr = []
             rela_days = []
             for i,second in enumerate(self.relative_seconds):
-                e_time = self.first_time + second
+                e_time = self.baseTime + second
                 if e_time<(loop_time+inc_second/2) and e_time>mb_time:
                     eve_arr.append(self.locs[i,:4])
                     rela_days.append((e_time-reftime)/(24*60*60))
@@ -825,21 +815,20 @@ class Catalog():
                        columns=4,subplotsize=(3,3),
                        marker='o',ms=1,
                        wspace=None,hspace=None):
-        
+
         from seisloc.plot import intervals_plot
         plt.close()
-
         axs = intervals_plot(xys=self.locs[:,:2],
                 rela_secs=self.relative_seconds,
-                reftime=self.first_time,
+                reftime=self.baseTime,
                 interval=interval,method=method,
                 xlim=xlim,ylim=ylim,
                 columns=columns,subplotsize=subplotsize,
                 marker=marker,ms=ms,
                 wspace=wspace,hspace=hspace)
-        
+
         return axs
-   
+
     def depths_plot(self,
                 deplim=[0,10],interval=1,
                 xlim=[],ylim=[],
@@ -860,40 +849,42 @@ class Catalog():
         self.dict_count_Mo = sum_count_Mo(self,starttime,endtime)
         write_sum_count_Mo(self.dict_count_Mo,outFile,mode)
 
-    def write_info(self,fileName=None,reftime=None,disp=False):
+    def write_info(self,fileName=None,refTime=None,disp=False):
         if fileName==None:
             nowTime = UTCDateTime.now()
             fileName = "Catalog_"+nowTime.strftime("%Y%m%d%H%M%S")+".txt"
-        if reftime == None:
-            reftime = self.first_time
-        print("The reference time is: ",reftime)
+        if refTime == None:
+            refTime = self.baseTime
+        print("[Class Catalog] The reference time is: ",refTime)
         f = open(fileName,'w')
         for key in self.keys:
             lon = self.dict[key][0]
             lat = self.dict[key][1]
             dep = self.dict[key][2]
+            if dep>=6800:
+                print(f"[Warning] Depth of event {key} exceeds 6800, are you sure? ")
             mag = self.dict[key][3]
             etime = self.dict[key][4]
-            relative_days = (self.dict[key][4]-reftime)/(24*60*60)
+            relative_days = (self.dict[key][4]-refTime)/(24*60*60)
             _key = format(key,'8d')
             _lon = format(lon,'11.5f')
             _lat = format(lat,'10.5f')
-            _dep = format(dep,'7.2f')
+            _dep = format(dep,'8.2f')
             _mag = format(mag,'5.1f')
             _relative_days = format(relative_days,'16.8f')
             line = _key+_lon+_lat+_dep+_mag+_relative_days+" "+str(etime)
             f.write(line+"\n")
             if disp == True:
-                print(line)
-        print("Catalog information write into: ",fileName)
+                print("[Class Catalog] "+line)
+        print("[Class Catalog] Catalog information write into: ",fileName)
         f.close()
 
     def cata2fdsn(self,author="Hardy",catalog="SC",
                   cont="SC",contID="01",magtype="ML",
                   magauthor="SC Agency",elocname="SC",out_file='cata.fdsn'):
 
-        cata2fdsn(self,author=author,catalog=catalog,                         
-                  cont=cont,contID=contID,magtype=magtype,                       
+        cata2fdsn(self,author=author,catalog=catalog,
+                  cont=cont,contID=contID,magtype=magtype,
                   magauthor=magauthor,elocname=elocname,out_file=out_file)
 
     def copy(self):
@@ -907,13 +898,13 @@ class Catalog():
 
     def __repr__(self):
         _qty = f"HypoDD relocation catalog with {len(self.dict.keys())} events\n"
-        _time= f"     Time range is: {self.first_time+np.min(self.relative_seconds)} to {self.first_time+np.max(self.relative_seconds)}\n"
+        _time= f"     Time range is: {self.baseTime+np.min(self.relative_seconds)} to {self.baseTime+np.max(self.relative_seconds)}\n"
         _mag = f" Magnitue range is: {format(np.min(self.locs[:,3]),'4.1f')} to {format(np.max(self.locs[:,3]),'4.1f')}\n"
         _lon = f"Longitude range is: {format(np.min(self.locs[:,0]),'8.3f')} to {format(np.max(self.locs[:,0]),'8.3f')}\n"
         _lat = f" Latitude range is: {format(np.min(self.locs[:,1]),'7.3f')} to {format(np.max(self.locs[:,1]),'7.3f')}\n"
         _dep = f"    Depth range is: {format(np.min(self.locs[:,2]),'4.1f')} to {format(np.max(self.locs[:,2]),'4.1f')}\n"
         return _qty+_time+_mag+_lon+_lat+_dep
-    
+
     def __getitem__(self,key):
         return self.dict[key]
 

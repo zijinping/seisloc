@@ -134,7 +134,7 @@ def to_dd_sta_file(sta_dict,out_file="netsta.dd",ele_zero=True):
                    " "+format(ele,'>5d')+"\n")
     f_dd.close()
 
-def sta2dd(sta_file,out_file="sta.dd",ele_zero=True):
+def sta2dd(sta_file,out_file="netsta.dd",ele_zero=True):
     """
     Convert station file into hypoDD format
     """

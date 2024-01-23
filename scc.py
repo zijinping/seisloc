@@ -40,14 +40,14 @@ def wf_scc(st1,st2,tb,te,maxShift,marker='t0',bestO=False):
      tmplt_st: template waveform of one station
        sta_st: target waveform of the same station
         tb,te: begin and end time window for waveform center on the corresponding marker
-     maxShift: maximum shift value for sliding, in seconds         
+     maxShift: maximum shift value for sliding, in seconds
         bestO: bool. If True, output the best fit origin time
 
     Return
     -----------
         ccmax: maximum cross-correlation coefficient
         aamax: amplitude ratio at ccmax
-     bestTime: the best arrival time
+     bestTime: the best arrival time of st2(sta_st)
       cc_list: cross-correlation values
     """
     tmplt_st = st1.copy()
@@ -58,14 +58,14 @@ def wf_scc(st1,st2,tb,te,maxShift,marker='t0',bestO=False):
     assert len(tmplt_st) == len(sta_st)
     ncom = len(tmplt_st)    # number of component, n = 3 means 3 components cross-correlation
     assert ncom in [1,3]
-    
+
     assert tmplt_st[0].stats.delta == sta_st[0].stats.delta
     delta = tmplt_st[0].stats.delta
-    
-    assert (tb-int(tb/delta)*delta)<1E-8, f"tb should be in the precision consistent with delta: {delta}!"
-    assert (te-int(te/delta)*delta)<1E-8, f"te should be in the precision consistent with delta: {delta}!"
-    assert (maxShift-int(maxShift/delta)*delta)<1E-8, f"te should be in the precision consistent with delta: {delta}!"
-    
+
+    tb = int(tb/delta)*delta
+    te = int(te/delta)*delta
+    maxShift = int(maxShift/delta)*delta
+
     reftime1 = read_sac_ref_time(tmplt_st[0])
     npts1 = tmplt_st[0].stats.npts
     for tr in tmplt_st:
@@ -97,10 +97,8 @@ def wf_scc(st1,st2,tb,te,maxShift,marker='t0',bestO=False):
     assert cute2<=sta_st[0].stats.sac.e, "try decrease tb or decrease maxShift!"
 
     tmplt_st.trim(reftime1+cutb1,reftime1+cute1)
-#    tmplt_st.detrend("constant")
     
     sta_st.trim(reftime2+cutb2-maxShift,reftime2+cute2+maxShift)
-#    sta_st.detrend("constant")
     
     tmplt_data = List()
     sta_data = List()
@@ -265,13 +263,13 @@ def convert_csv(staLst=None,sumFile="out.sum",workDir="./",cc_threshold=0.7,minL
                         if cc >=cc_threshold:
                             dts.append([evid1,evid2,sta,pha,arr1-arr2,cc])
         if len(dts)>=1:
-            df = pd.DataFrame(dts,columns=["id1","id2","sta","pha","dt","cc"])
+            df = pd.DataFrame(dts,columns=["evid1","evid2","sta","pha","dt","cc"])
             df.to_csv(os.path.join(workDir,"0dtcc",f"{sta}.csv"),index=False)
     print("<<< Conversion complete! <<<")
 
 def write_dtcc(dtccDir="0dtcc",minLink = 4):
     print(">>> Loading csv files ... ")
-    dfAll = pd.DataFrame([],columns=["id1","id2","sta","pha","dt","cc"])
+    dfAll = pd.DataFrame([],columns=["evid1","evid2","sta","pha","dt","cc"])
     for csv in tqdm(os.listdir(dtccDir)):
         if csv[-3:] != "csv" or csv[0] == ".":
             continue
@@ -279,22 +277,22 @@ def write_dtcc(dtccDir="0dtcc",minLink = 4):
         df = pd.read_csv(csvPth)
         dfAll = pd.concat([dfAll,df],ignore_index=True)
     print(">>> Writing dt.cc file ...")
-    dfAllSort = dfAll.sort_values(["id1","id2",'sta','pha'])
-    evid1s = sorted(np.unique(dfAllSort['id1']))
-    id1Use = -1
-    id2Use = -2
+    dfAllSort = dfAll.sort_values(["evid1","evid2",'sta','pha'])
+    evid1s = sorted(np.unique(dfAllSort['evid1']))
+    evid1Use = -1 # set a unreasonable value
+    evid2Use = -2 # set a unreasonable value
     lines = []
     f = open(os.path.join(dtccDir,'dt.cc'),'w')
     for i, df in tqdm(dfAllSort.iterrows()):
-        if df.id1 != id1Use or df.id2 != id2Use:
+        if df.evid1 != evid1Use or df.evid2 != evid2Use:
             if len(lines) > minLink+1: # phases + headlines
                 for line in lines:
                     f.write(line+"\n")
-            id1Use = df.id1
-            id2Use = df.id2
+            evid1Use = df.evid1
+            evid2Use = df.evid2
             # Initiate the line
-            lines = [f"# {format(df.id1,'5d')} {format(df.id2,'5d')} 0"]
-        if df.id1 == id1Use and df.id2 == id2Use:
+            lines = [f"# {format(df.evid1,'5d')} {format(df.evid2,'5d')} 0"]
+        if df.evid1 == evid1Use and df.evid2 == evid2Use:
             lines.append(f"{format(df['sta'],'<7s')} {format(df['dt'],'7.4f')} {format(df['cc'],'5.3f')} {df['pha']}")
     if len(lines) > minLink + 1:
         for line in lines:

@@ -1,26 +1,18 @@
 import re
 import os
-import glob
 import shutil
 import random
 from obspy import UTCDateTime
-from obspy.geodetics import gps2dist_azimuth
-from seisloc.hypoinv import load_sum_evstr,load_sum_evid
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from seisloc.geometry import in_rectangle,loc_by_width
-from math import ceil,floor
 import multiprocessing as mp
 import time
 import subprocess
-import copy
-from PIL import Image
 from seisloc.geometry import spherical_rotate
 from seisloc.utils import readfile,writefile
-
-
+import pandas as pd
 
 def load_PC(catalog="/home/zijinping/Desktop/projects/wy_eq/2018_2019_PC/2018_2019_hypoDD.reloc",
             start_evid=300000):
