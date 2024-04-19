@@ -61,7 +61,7 @@ def grid_search(G:np.ndarray,dts:np.ndarray,n2x:int,dx:float,n2y:int,dy:float,n2
     return x0,y0,z0,locMin
 
 def locate_slave2(masLon,masLat,masDep,masVels,
-                 phaseRecs,model,stas,slaveId=-1,secondRefine=False):
+                 phaseRecs,model,stas,stepDict,slaveId=-1,secondRefine=False):
     """
     Relative location of the template matching detected events with respect to 
     the template event (master event) using the grid-search method.
@@ -72,6 +72,8 @@ def locate_slave2(masLon,masLat,masDep,masVels,
     | phaseRecs: Records (sta,dt,weight,phsType) of phase relationships between 
                  the slave event and the master event. dt = t(sla.) - t(mas.)
     |     model: Obspy taup model for the ray-tracing
+    |  stepDict: Information regarding steps. E.g., {"x":[5,0.1];"y":[5,0.1],"z":{5,0.1}}
+                 stands for search along x,y,z for -0.5 to 0.5 km with step length of 0.1 km.
     |      stas: seisloc.sta Sta() class that containing stations information
     |   slaveId: This parameter is designed for multiprocessing and will be 
                  returned as a marker of the multiprocessing result
@@ -122,7 +124,14 @@ def locate_slave2(masLon,masLat,masDep,masVels,
     G = np.array(G)
     d = np.array(d).reshape((len(d),1))
     W = np.array(W).reshape((len(W),1))
-    dxkm,dykm,dzkm,bdyStats = grid_search(G,d,5,0.1,5,0.1,5,0.04,W=W,secondRefine=secondRefine)
+    
+    xnode=stepDict["x"][0]
+    xstep=stepDict["x"][1] # -xnode*xstep, ...,0,...,xnode*step
+    ynode=stepDict["y"][0]
+    ystep=stepDict["y"][1] # -xnode*xstep, ...,0,...,xnode*step
+    znode=stepDict["z"][0]
+    zstep=stepDict["z"][1] # -xnode*xstep, ...,0,...,xnode*step
+    dxkm,dykm,dzkm,bdyStats = grid_search(G,d,xnode,xstep,ynode,ystep,znode,zstep,W=W,secondRefine=secondRefine)
 
     dlon = dxkm/(111.19*np.cos(np.deg2rad(masLat)))
     dlat = dykm/111.19

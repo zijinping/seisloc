@@ -40,8 +40,8 @@ def load_dtcc(dtcc="dt.cc",save_pkl=False,phases=['P','S'],minobs=4,mean_cc_thre
                 evid1 = min([evid1,evid2])
                 evid2 = max([evid1,evid2])
             else:
-                netsta,_diff,_cc,pha = re.split(" +",line)
-                try: 
+                netsta,_diff,_cc,pha = re.split(" +",line.strip())
+                try:
                     pair_dict[evid1][evid2].append(float(_cc))
                 except:
                     try:

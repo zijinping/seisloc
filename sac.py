@@ -18,7 +18,7 @@ def get_trav(st,sta,marker="a"):
     marker 'a'. After that, some P arrivals are refined with marker "t3" and 
     further refined with marker 't5'. Then to get the best travel time, one can
     use:
-    >>> get_trav2(st,sta,marker=['t5','t3','a'])
+    >>> get_trav(st,sta,marker=['t5','t3','a'])
 
     Return:
     marker_time, marker
@@ -44,7 +44,7 @@ def get_trav(st,sta,marker="a"):
 
     if status == False:
         trav=0
-        marker="None"
+        marker="none"
 
     return trav,marker
 

@@ -30,6 +30,7 @@ class WYpara():
                 para,info = re.split("=",content)
                 para = para.strip()                     # remove fore and end spaces
                 info = info.strip()
+                info = info.strip('"')
                 if len(re.split("\$",info))>1:          # $ indicates citation of other parameters
                     for seg in re.split("\$",info)[1:]: # seperate each citation
                         sub = re.split("[/]",seg)[0]    # get the cited parameter name
