@@ -408,3 +408,26 @@ def scc_input(srcWfBase,tarBase,freqmin,freqmax,markerP="a",markerS="t0",zeropha
     print(">>> Writing arrival files ")
     scc_input_write_arr(arrDir,arrDict)
 
+def load_dtcc(dtccPth="dt.cc"):
+    """
+    Load dt.cc file and return a DataFrame with columns: evid1, evid2, sta, pha, dt, cc
+    """
+    if dtccPth[-4:] == ".pkl":                         # .pkl file load by pickle
+        f = open(dtccPth,'rb')
+        dfSort = pickle.load(f)
+    else:                                           # using normal processing
+        data = []
+        f = open(dtccPth,'r')
+        for line in f:
+            line = line.rstrip()
+            if line[0] == "#":
+                _,_evid1,_evid2,_ = re.split(" +",line)
+                evid1 = int(_evid1); evid2 = int(_evid2)
+            else:
+                sta,_diff,_cc,pha = re.split(" +",line.strip())
+                data.append([evid1,evid2,sta,pha,float(_diff),float(_cc)])
+        df = pd.DataFrame(data,columns=["evid1","evid2","sta","pha","dt","cc"])
+        dfSort = df.sort_values(by=["evid1","evid2"],ascending=False)
+
+    return dfSort
+

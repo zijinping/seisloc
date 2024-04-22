@@ -1,4 +1,4 @@
-import os
+import pandas as pd
 import re
 import copy
 import matplotlib.pyplot as plt
@@ -11,84 +11,20 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 from seisloc.dd import load_DD
 from obspy.geodetics import gps2dist_azimuth
 import pickle
+from seisloc.scc import load_dtcc
 
-def load_dtcc(dtcc="dt.cc",save_pkl=False,phases=['P','S'],minobs=4,mean_cc_threshold=0.7):
-    """
-    If the provided dtcc file is a pkl file, then pickle.load() will be used for loading data
-    
-    The programme reads in {dtcc} file and calculates average cc value for designated {phases}.
-    The average cc value constrain the similarity of two events.
-    
-    Parameters:
-        if save_pkl: a pkl file will be saved with the name {dtcc}.cluster.pkl
-                     please note if dtcc file is a .pkl file, even save_pkl is True, it will not 
-                     generate a new pkl file.
-    """
-    if dtcc[-4:] == ".pkl":                         # .pkl file load by pickle
-        f = open(dtcc,'rb')
-        pair_list = pickle.load(f)
-        
-    else:                                           # using normal processing
-        pair_dict = {}
-        i = 0
-        f = open(dtcc,'r')
-        for line in f:
-            line = line.rstrip()
-            if line[0] == "#":
-                _,_evid1,_evid2,_ = re.split(" +",line)
-                evid1 = int(_evid1); evid2 = int(_evid2)
-                evid1 = min([evid1,evid2])
-                evid2 = max([evid1,evid2])
-            else:
-                netsta,_diff,_cc,pha = re.split(" +",line.strip())
-                try:
-                    pair_dict[evid1][evid2].append(float(_cc))
-                except:
-                    try:
-                        pair_dict[evid1][evid2]=[]
-                        pair_dict[evid1][evid2].append(float(_cc))
-                    except:
-                        try:
-                            pair_dict[evid1] = {}
-                            pair_dict[evid1][evid2]=[]
-                            pair_dict[evid1][evid2].append(float(_cc))
-                        except:
-                            pass
-                            
-        pair_list = []
-        for key1 in pair_dict.keys():
-            for key2 in pair_dict[key1].keys():
-                if len(pair_dict[key1][key2])<minobs:
-                    continue
-                mean_cc = np.mean(pair_dict[key1][key2])
-                if  mean_cc < mean_cc_threshold:
-                    continue
-                pair_list.append([key1,key2,mean_cc])
-                
-        return pair_list
-        
-        if save_pkl:                              # generate pkl file to speed loading in future
-            dtcc_pkl = dtcc+".clustering.pkl"
-            with open(dtcc_pkl,'wb') as f:
-                pickle.dump(pair_list,f)
-
-    return pair_list
-
-class Eqcluster():
+class EqCluster():
     def __init__(self,
                  loc_file="hypoDD.reloc",
                  dtcc_file="dt.cc",
-                 dtcc_save_pkl=True,
                  dtcc_phases=['P','S'],
                  dtcc_minobs=4,
                  dtcc_mean_cc_threshold=0.7,
                  distWt=0):
         self.cc_threshold = dtcc_mean_cc_threshold
-        self.pairs = load_dtcc(dtcc_file,
-                               save_pkl=dtcc_save_pkl,
-                               phases=dtcc_phases,
-                               minobs = dtcc_minobs,
-                               mean_cc_threshold=dtcc_mean_cc_threshold)
+
+
+        self.pairs = self.dtcc_pairs(dtcc_file,usePhases=dtcc_phases,minObs=dtcc_minobs,ccThred=dtcc_mean_cc_threshold)
         self.dd_dict,_ = load_DD(loc_file)
 
         self.evids = np.array(list(self.dd_dict.keys())) # all event ids in the reloc file
@@ -142,6 +78,31 @@ class Eqcluster():
 
         self.in_matrix_evids = self.cc_evids.copy()
 
+    def dtcc_pairs(self,dtccPth,usePhases=["P","S"],minObs=4,ccThred=0.7):
+        """
+        Return a list of pairs with cc value higher than ccThred [evid1, evid2, meanCc]
+        """
+        pairs = []
+        df= load_dtcc(dtccPth)
+        evid1s = np.unique(df["evid1"])
+        for evid1 in evid1s:
+            dfEvid1 = df[df["evid1"]==evid1]
+            evid2s = np.unique(dfEvid1["evid2"])
+            for evid2 in evid2s:
+                ccvs = []
+                dfEvid1Evid2 = dfEvid1[dfEvid1["evid2"]==evid2]
+                for i, tmpDf in dfEvid1Evid2.iterrows():
+                    pha = tmpDf["pha"]
+                    if pha.upper() in usePhases or pha.lower() in usePhases:
+                        ccvs.append(tmpDf["cc"])
+                if len(ccvs) < minObs:
+                    continue
+                meanCc = np.mean(ccvs)
+                if meanCc < ccThred:
+                    continue
+                pairs.append([evid1,evid2,meanCc])
+        return pairs
+
     def clustering(self,evids=[],tolerance=0,method='average'):
         """
         Parameters:
@@ -168,7 +129,7 @@ class Eqcluster():
         print(f"len evids is:{len(self.input_evids)}; ",\
               f"len matrix is: {len(self.in_matrix_evids)};",end=' ')
         print(f"len events not in matrix: {len(self.out_matrix_evids)}")
-        
+
         y = pdist(self.cluster_matrix)
         self.Z = linkage(y,method=method)
 
@@ -196,13 +157,13 @@ class Eqcluster():
         if len(xlim)>0:
             ax.set_xlim(xlim)
         self.dn = dendrogram(self.Z,leaf_rotation=leaf_rotation)
-        
+
         if max_d != None:
             plt.axhline(y=max_d, c='k')
-            
+
         plt.xlabel("sample index")
         plt.ylabel("distance")
-        
+
     def fancy_dendrogram(self,
                          truncate_mode='lastp',
                          p=12,
@@ -352,6 +313,18 @@ class Eqcluster():
         
         return sel_cluster_evids
     
+    def write_info(self,fileName="evid_cid.EqCluster"):
+        """
+        Write the cluster information to a file
+        """
+        with open(fileName,"w") as f:
+            f.write("#Cluster info\n")
+            f.write(f"#Num of clusters: {self.catQty}\n")
+            for i,evid in enumerate(self.in_matrix_evids):
+                f.write(f"{format(evid,'6d')} {self.cluster_category[i]}\n")
+            for evid in self.out_matrix_evids:
+                f.write(f"{format(evid,'6d')} 0\n")
+        print("[EqCluster.write_info] output filename: evid_cid.EqCluster") 
     def __repr__(self):
         str1 = f"Eqcluster object with {len(self.evids)} events in hypoDD relocation file\n"
         str2 = f"{len(self.evids)} events constrained by dt.cc file"

@@ -4,6 +4,9 @@ from numba import jit,prange
 from numpy.linalg import det
 from obspy.geodetics import gps2dist_azimuth
 
+from numba import jit, prange
+import numpy as np
+
 @jit(nopython=True,fastmath=True)
 def grid_search(G:np.ndarray,dts:np.ndarray,n2x:int,dx:float,n2y:int,dy:float,n2z:int,dz:float,W=1,secondRefine:bool=False)->tuple:
     """
@@ -16,9 +19,9 @@ def grid_search(G:np.ndarray,dts:np.ndarray,n2x:int,dx:float,n2y:int,dy:float,n2
     ys = np.arange(-n2y,n2y+1,1)*dy
     zs = np.arange(-n2z,n2z+1,1)*dz
     resMatrix = np.zeros((nx,ny,nz))
-    for i in range(nx):
-        for j in range(ny):
-            for z in range(nz):
+    for i in prange(nx):
+        for j in prange(ny):
+            for z in prange(nz):
                 m = np.array([[xs[i]],[ys[j]],[zs[z]]])
                 ets = G@m
                 resMatrix[i,j,z] = np.std((ets-dts)*W)
@@ -44,9 +47,9 @@ def grid_search(G:np.ndarray,dts:np.ndarray,n2x:int,dx:float,n2y:int,dy:float,n2
         zs1 = zs/10
         
         resMatrix = np.zeros((nx,ny,nz))
-        for i in range(nx):
-            for j in range(ny):
-                for z in range(nz):
+        for i in prange(nx):
+            for j in prange(ny):
+                for z in prange(nz):
                     m = np.array([[x0+xs1[i]],[y0+ys1[j]],[z0+zs1[z]]])
                     ets = G@m
                     resMatrix[i,j,z] = np.std((ets-dts)*W)
