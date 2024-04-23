@@ -408,6 +408,7 @@ def scc_input(srcWfBase,tarBase,freqmin,freqmax,markerP="a",markerS="t0",zeropha
     print(">>> Writing arrival files ")
     scc_input_write_arr(arrDir,arrDict)
 
+
 def load_dtcc(dtccPth="dt.cc"):
     """
     Load dt.cc file and return a DataFrame with columns: evid1, evid2, sta, pha, dt, cc
@@ -430,4 +431,3 @@ def load_dtcc(dtccPth="dt.cc"):
         dfSort = df.sort_values(by=["evid1","evid2"],ascending=False)
 
     return dfSort
-

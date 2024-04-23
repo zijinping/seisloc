@@ -78,19 +78,20 @@ class EqCluster():
 
         self.in_matrix_evids = self.cc_evids.copy()
 
-    def dtcc_pairs(self,dtccPth,usePhases=["P","S"],minObs=4,ccThred=0.7):
+
+    def dtcc_pairs(self, dtccPth, usePhases=["P", "S"], minObs=4, ccThred=0.7):
         """
         Return a list of pairs with cc value higher than ccThred [evid1, evid2, meanCc]
         """
         pairs = []
-        df= load_dtcc(dtccPth)
+        df = load_dtcc(dtccPth)
         evid1s = np.unique(df["evid1"])
         for evid1 in evid1s:
-            dfEvid1 = df[df["evid1"]==evid1]
+            dfEvid1 = df[df["evid1"] == evid1]
             evid2s = np.unique(dfEvid1["evid2"])
             for evid2 in evid2s:
                 ccvs = []
-                dfEvid1Evid2 = dfEvid1[dfEvid1["evid2"]==evid2]
+                dfEvid1Evid2 = dfEvid1[dfEvid1["evid2"] == evid2]
                 for i, tmpDf in dfEvid1Evid2.iterrows():
                     pha = tmpDf["pha"]
                     if pha.upper() in usePhases or pha.lower() in usePhases:
@@ -100,8 +101,9 @@ class EqCluster():
                 meanCc = np.mean(ccvs)
                 if meanCc < ccThred:
                     continue
-                pairs.append([evid1,evid2,meanCc])
+                pairs.append([evid1, evid2, meanCc])
         return pairs
+
 
     def clustering(self,evids=[],tolerance=0,method='average'):
         """
