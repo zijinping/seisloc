@@ -126,7 +126,7 @@ def get_tr_marker_idx(tr,marker='a'):
     sp = tr.stats.sampling_rate
     starttime = tr.stats.starttime
     markerTime = refTime+tr.stats.sac[marker]
-    idx = int((markerTime - starttime)*sp)
+    idx = np.round(int((markerTime - starttime)*sp),0)
     return idx
 
 def get_tr_data(tr,idx,tb,te):

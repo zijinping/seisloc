@@ -13,9 +13,32 @@ from seisloc.statistics import sum_count_Mo,write_sum_count_Mo
 from seisloc.phase_convert import cata2fdsn
 from tqdm import tqdm
 
+def _load_cata(locFile,format="hypoDD"):
+    if format == "hypoDD":
+        tmpDict, _ = load_DD(locFile)
+        return tmpDict
+    if format == "sum": # Hypoinverse summary file
+        from seisloc.hypoinv import load_sum_evid
+        sumDict = load_sum_evid(locFile)
+        tmpDict = {}
+        for evid in sumDict.keys():
+            estr,evlo,evla,evdp,emag,eres = sumDict[evid]
+            etime = UTCDateTime.strptime(estr,"%Y%m%d%H%M%S%f")
+            tmpDict[evid] = [evlo,evla,evdp,emag,etime]
+        return tmpDict
+    if format == "cata":
+        with open(locFile,'r') as f:
+            tmpDict={}
+            for line in f:
+                line = line.strip()
+                _evid,_evlo,_evla,_evdp,_emag,_eday,_etime=line.split()
+                tmpDict[int(_evid)] = [float(_evlo),float(_evla),float(_evdp),float(_emag),UTCDateTime(_etime)]
+        return tmpDict
+
+
 
 class Catalog():
-    def __init__(self,locFile="hypoDD.reloc"):
+    def __init__(self,locFile="hypoDD.reloc",format="hypoDD",verbose=1):
         """
         The programme will read in hypoDD relocation file by default. If no hypoDD
         file provided (locFile=None), it will generate an empty catalog. 
@@ -27,30 +50,36 @@ class Catalog():
         >>> cata.init()            # initiation of the class
         >>> print(cata)            # basic information will be printed
         """
+        self.verbose = verbose
         if locFile != None:
             if not os.path.exists(locFile):
                 raise Exception(f"{locFile} not existed!")
-            self.dict,_ = load_DD(locFile)
-            print("[Class Catalog] successfully loaded the catalog file: "+locFile)
+            self.dict = _load_cata(locFile,format=format)
+            if self.verbose==True or self.verbose==1:
+                print("[Class Catalog] successfully loaded the catalog file: "+locFile)
             self.init()
         else:
-            print("[Class Catalog] ~~~~~~~~~~~~~~~ Warning ~~~~~~~~~~~~~~~~~")
-            print("[Class Catalog] No hypoDD .reloc file provided, an empty Catalog created.")
-            print("[Class Catalog] You can define self.dict[evid] = [lon,lat,dep,mag,UTCDateTime]}")
-            print("[Class Catalog] Then run: .init() to initiate the catalog.")
+            if self.verbose == True or self.verbose==1:
+                print("[Class Catalog] ~~~~~~~~~~~~~~~ Warning ~~~~~~~~~~~~~~~~~")
+                print("[Class Catalog] No hypoDD .reloc file provided, an empty Catalog created.")
+                print("[Class Catalog] You can define self.dict[evid] = [lon,lat,dep,mag,UTCDateTime]}")
+                print("[Class Catalog] Then run: .init() to initiate the catalog.")
             self.dict = {}
 
     def init(self):
         """
         Initiate the catalog
         """
-        print("[Class Catalog] Initiate the catalog ... ")
+        if self.verbose == True or self.verbose==1:
+            print("[Class Catalog] Initiate the catalog ... ")
         self.baseTime = UTCDateTime(2020,1,1)
         self.init_keys()
         self.init_locs()
         self.init_relative_seconds()
         self.sort()
-        print("[Class Catalog] Initiation completed! ")
+        self.evids = self.keys
+        if self.verbose == True or self.verbose==1:
+            print("[Class Catalog] Initiation completed! ")
 
     def init_keys(self):
         """
@@ -701,7 +730,8 @@ class Catalog():
                   geopara=None,
                   cmap=None,
                   vmin=None,
-                  vmax=None):
+                  vmax=None
+                  ):
         """
         Generate gif animation file
         increment: Time increased for each plot. Unit: hour
@@ -744,6 +774,11 @@ class Catalog():
             ax1.set_ylabel("Lat(degree)",fontsize=18)
             ax1.set_title(f"{str(loop_time)[:19]}",fontsize=16)
             if geopara != None:
+                # --------------- The Z201H02 pad ----------------------------
+                padZ201H02 = geopara.wellpad("Z201H02",well_edgecolor="purple")
+                padZ201H04 = geopara.wellpad("Z201H04",well_edgecolor="purple")
+                ax1.add_collection(padZ201H02)
+                ax1.add_collection(padZ201H04)
                 # ----------------Molin faults--------------------------------
                 ml_fault = np.array(geopara.dict['ml_fault'])
                 ML_fault,=ax1.plot(ml_fault[:,0],ml_fault[:,1],'r-')
@@ -849,6 +884,9 @@ class Catalog():
         self.dict_count_Mo = sum_count_Mo(self,starttime,endtime)
         write_sum_count_Mo(self.dict_count_Mo,outFile,mode)
 
+    
+    
+
     def write_info(self,fileName=None,refTime=None,disp=False):
         if fileName==None:
             nowTime = UTCDateTime.now()
@@ -867,8 +905,8 @@ class Catalog():
             etime = self.dict[key][4]
             relative_days = (self.dict[key][4]-refTime)/(24*60*60)
             _key = format(key,'8d')
-            _lon = format(lon,'11.5f')
-            _lat = format(lat,'10.5f')
+            _lon = format(lon,'12.6f')
+            _lat = format(lat,'11.6f')
             _dep = format(dep,'8.2f')
             _mag = format(mag,'5.1f')
             _relative_days = format(relative_days,'16.8f')
@@ -972,14 +1010,17 @@ def dtcc_otc(dtcc_old,inv_old_file,inv_new_file):
             f.write(line+"\n")
     f.close()
 
-def read_txt_cata(cataPth):
+def read_txt_cata(cataPth,verbose=1):
+    """
+    This function could be replaced by Catalog(cataPth,format="cata") [recommend]
+    """
     with open(cataPth,'r') as f:
         edict={}
         for line in f:
             line = line.strip()
             _evid,_evlo,_evla,_evdp,_emag,_eday,_etime=line.split()
             edict[int(_evid)] = [float(_evlo),float(_evla),float(_evdp),float(_emag),UTCDateTime(_etime)]
-    cata = Catalog(locFile=None)
+    cata = Catalog(locFile=None,verbose=verbose)
     cata.dict = edict
     cata.init()
     return cata

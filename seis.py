@@ -42,3 +42,4 @@ def SC_tr_remove_spikes(tr):
         tr.detrend("constant")
         tr.detrend("linear")
         tr.data[ks] = 0
+

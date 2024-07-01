@@ -308,7 +308,7 @@ def cartesian_rotate(xy,center=[0,0],degree=0):
     
     return xy_rotate
 
-def event_rotate(inFile,center,deg):
+def event_dat_rotate(inFile,center,antiClockDeg):
     """
     Rotate event input file for tomoDD
     """
@@ -323,7 +323,7 @@ def event_rotate(inFile,center,deg):
             lat = float(_lat)
             lon = float(_lon)
             xys.append([lon,lat])
-    xys_rot = spherical_rotate(xys,center=center,degree=deg)
+    xys_rot = spherical_rotate(xys,center=center,degree=antiClockDeg)
 
     f = open(outFile,'w')
     for i in range(len(cont)):
@@ -580,7 +580,7 @@ def ellipse(center=[0,0],xamp=1,yamp=1,inters=101,rotate=0):
         xys = np.zeros((len(xs),2))
         xys[:,0] = xs
         xys[:,1] = ys
-        xys_rotate = cartesian_rotate(xys,degree=degree)
+        xys_rotate = cartesian_rotate(xys,degree=rotate)
         xs = xys_rotate[:,0]
         ys = xys_rotate[:,1]
 

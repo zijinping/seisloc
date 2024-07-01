@@ -18,53 +18,41 @@ from tqdm import tqdm
 from seisloc.text_io import load_y2000,load_cnv,_write_cnv_file,write_arc
 
 
-def dd2fdsn(in_file,subset=None):
+def cata2fdsn(cata,saveFile="dd.fdsn"):
+    f = open(saveFile,'w')
+    f.write("#EventID|Time|Latitude|Longitude|Depth/km|Author|Catalog|Contributor|ContributorID|MagType|Magnitude|MagAuthor|EventLocationName\n")
+
+    for evid in cata.dict.keys():
+            etime = cata[evid][4]
+            evlo = cata[evid][0]
+            evla = cata[evid][1]
+            evdp = cata[evid][2]
+            mag = cata[evid][3]
+            magType = 'ML'
+            f.write('{:0>6d}'.format(evid)+"|")
+            f.write(str(etime)+"|")
+            f.write(format(evla,'6.3f')+"|")
+            f.write(format(evlo,'7.3f')+"|")
+            f.write(format(evdp,'6.2f')+"|")
+            f.write("Hardy|")
+            f.write("SC|")
+            f.write("SC|")
+            f.write("01|")
+            f.write(magType+'|')
+            f.write(format(mag+0.01,'5.2f')+"|")
+            f.write("SC Agency|")
+            f.write("SC\n")
+    f.close()
+
+
+
+def dd2fdsn(ddFile):
     '''
     Convert the hypoDD reloc file into fdsn
-    format that could be read by zmap	
+    format that could be read by zmap
     '''
-    T0 = time.time()
-    print("The start time is 0.")
-    if subset == None:
-        filt = False
-    else:
-        filt = True
-        [lon_min,lon_max,lat_min,lat_max] = subset
-    events = []
-    out_file = "dd.fdsn"
-    f=open(out_file,'w')
-    f.write("#EventID|Time|Latitude|Longitude|Depth/km|Author|Catalog|Contributor|ContributorID|MagType|Magnitude|MagAuthor|EventLocationName\n")
-    f.close()
-    eve_dict,df = load_DD(reloc_file=in_file)
-    T1 = time.time()
-    print("%f seconds passed to load hypoDD file" %(T1-T0))
-    eve_list = list(eve_dict)
-    f = open(out_file,'a')
-    for eve in eve_list:
-        evid = eve_dict[eve][4]
-        e_time = UTCDateTime.strptime(eve,"%Y%m%d%H%M%s%f")
-        e_lon = eve_dict[eve][0]
-        e_lat = eve_dict[eve][1]
-        e_dep = eve_dict[eve][2]
-        e_mag = eve_dict[eve][3] 
-        if filt:
-            if e_lat>lat_max or e_lat<lat_min or e_lon>lon_max or e_lon<lon_min:
-                continue
-        mag_type = 'ML'
-        f.write('{:0>6d}'.format(evid)+"|")
-        f.write(str(e_time)+"|")
-        f.write(format(e_lat,'6.3f')+"|")
-        f.write(format(e_lon,'7.3f')+"|")
-        f.write(format(e_dep,'6.2f')+"|")
-        f.write("Hardy|")
-        f.write("SC|")
-        f.write("SC|")
-        f.write("01|")
-        f.write(mag_type+'|')
-        f.write(format(e_mag+0.01,'5.2f')+"|")
-        f.write("SC Agency|")
-        f.write("SC\n")
-    f.close()
+    cata = Catalog(ddFile)
+    cata2fdsn(cata)
 
 def sum2fdsn(in_file,subset=None):
     '''
@@ -432,10 +420,16 @@ def sc2phs(file_list=[],trims=[None,None,None,None],magThreshold=None,baseid=1,o
     output_content=[]
     input_content = []
     for file in file_list:
-        with open(file,"r",encoding="gbk") as f:
-            for line in f:
-                input_content.append(line.rstrip())
-        f.close()
+        try:
+            with open(file,"r",encoding="utf-8") as f:
+                for line in f:
+                    input_content.append(line.rstrip())
+            f.close()
+        except:
+            with open(file,"r",encoding="gbk") as f:
+                for line in f:
+                    input_content.append(line.rstrip())
+            f.close()
     evid= baseid-1
     for line in tqdm(input_content):
         print(line)

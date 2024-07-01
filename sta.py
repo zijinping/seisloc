@@ -167,7 +167,7 @@ def sta2vel(sta_file,out_file="sta.vel",ele_zero=True):
     sta_dict = load_sta(sta_file)
     to_vel_sta_file(sta_dict,out_file,ele_zero)
 
-def toREAL(sta_dict,outFile):
+def to_REAL_sta_file(sta_dict,outFile):
     fsta = open(outFile,'w')
     for net in sta_dict.keys():
         for sta in sta_dict[net].keys():
@@ -184,7 +184,7 @@ def sta2REAL(sta_file,out_file):
     which is applicable for the update VELEST program modified by Hardy ZI
     """
     sta_dict = load_sta(sta_file)
-    toREAL(sta_dict,out_file)
+    to_REAL_sta_file(sta_dict,out_file)
 
 def sta_sel(sta_file,c_lon,c_lat,nets=[],stas=[],radius=100):
     """
@@ -295,7 +295,6 @@ class Sta():
             plt.ylim(ylim)
         plt.xlabel("Longitude")
         plt.ylabel("Latitude")
-        plt.show()
         
     def copy(self):
         return copy.deepcopy(self)
@@ -334,6 +333,9 @@ class Sta():
         
     def sta2vel(self,ele_zero=True):
         to_vel_sta_file(self.dict,ele_zero=ele_zero)
+
+    def sta2real(self,ele_zero=True):
+        to_real_sta_file(self.dict,ele_zero=ele_zero)
     
     def __repr__(self):
         self.get_locs()

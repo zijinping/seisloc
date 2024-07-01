@@ -129,6 +129,7 @@ class EqCluster():
         kk = np.where(similar_qty_arr>=tolerance)
         self.update_cluster(kk[0])
         print(f"len evids is:{len(self.input_evids)}; ",\
+              f"len cc_evids is: {len(self.cc_evids)}; "\
               f"len matrix is: {len(self.in_matrix_evids)};",end=' ')
         print(f"len events not in matrix: {len(self.out_matrix_evids)}")
 

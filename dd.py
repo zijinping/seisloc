@@ -259,8 +259,14 @@ def load_DD(reloc_file="hypoDD.reloc",shift_hour=0):
            "YR","MO","DY","HR","MI","SC","MAG",\
            "NCCP","NCCS","NCTP","NCTS","RCC","RCT","CID"]
     number = 0
-
-    dataset = np.loadtxt(reloc_file)
+    dataset = []
+    with open(reloc_file,'r') as f:
+        for line in f:
+            line = line.rstrip()
+            if "*" not in line:
+                data = list(map(float,line.split()))
+                dataset.append(data)
+    dataset = np.array(dataset)
     
     if dataset.shape[1] == 24: # format of hypoDD.reloc file
         columns = ["ID","LAT","LON","DEPTH","X","Y","Z","EX","EY","EZ",\
