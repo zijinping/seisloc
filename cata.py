@@ -659,7 +659,7 @@ class Catalog():
         if pltShow == True:
             plt.show()
 
-    def diffusion_plot(self,refid=None,refloc=[],diff_cfs=[],unit="day",xlim=[],ylim=[],plt_show=True):
+    def diffusion_plot(self,refid=None,refloc=[],diff_cfs=[],unit="day",xlim=[],ylim=[]):
         '''
         Parameters:
         refid: reference event id
@@ -718,8 +718,6 @@ class Catalog():
             plt.ylim(ylim)
         else:
             plt.ylim(bottom=0)
-        if plt_show == True:
-            plt_show()
 
     def animation(self,
                   incre_hour=2,
