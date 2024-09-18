@@ -5,6 +5,50 @@ import numpy as np
 import os
 from seisloc.utils import month_day
 
+def calculate_snr(signal, noise):
+    """
+    Calculate the signal-to-noise ratio (SNR) of a given signal and noise.
+    
+    Parameters:
+        signal (numpy.ndarray): Array representing the signal.
+        noise (numpy.ndarray): Array representing the noise.
+    
+    Returns:
+        float: The signal-to-noise ratio (SNR) in decibels (dB).
+    """
+    signal_power = np.mean(np.abs(signal) ** 2)
+    noise_power = np.mean(np.abs(noise) ** 2)
+    snr = 10 * np.log10(signal_power / noise_power)
+    return snr
+
+def tr_snr(tr,noiseLen=0.5,sigLen=0.5,mkr='a'):
+    """
+    Calculate the signal-to-noise ratio (SNR) of a given trace.
+    
+    Parameters:
+        tr (obspy.Trace): The trace to calculate the SNR for.
+        noiseLen, sigLen: noise window length and signal window length
+        mkr: the marker in the sac file
+    
+    Returns:
+        float: The signal-to-noise ratio (SNR) in decibels (dB).
+    """
+    starttime = tr.stats.starttime
+    # Get the noise window
+    mkrVal = getattr(tr.stats.sac,mkr)
+    b = tr.stats.sac.b
+    tmp = tr.copy()
+    tmp = tmp.trim(starttime=starttime+mkrVal-b-noiseLen, endtime=starttime+mkrVal-b)
+    noise = tmp.data
+    
+    # Get the signal window
+    signal = tr.copy().trim(starttime=starttime+mkrVal-b, endtime=starttime+mkrVal-b+sigLen).data
+    
+    
+    # Calculate the SNR
+    snr = calculate_snr(signal, noise)
+    return snr
+
 def get_trav(st,sta,marker="a"):
     """
     Get the marker time from SAC header
