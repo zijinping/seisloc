@@ -340,13 +340,16 @@ def month_day(year,julday):
         day=julday-normal_list[i-1]
         return year,month,day
 
-def find_nearest(array,value):
+def find_closest(array,value):
     """
-    find the nearest value. The return is index and diff
+    find the nearest value.
+    Return:
+    | idx
+    | diff: array[id]-value
     """
     if type(array) != np.ndarray:
         array=np.array(array)
-    idx=np.abs(array-value).argmin()
+    idx=(np.abs(array-value)).argmin()
     diff=array[idx]-value
     return idx,diff
 

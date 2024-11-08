@@ -40,7 +40,7 @@ def _load_cata(locFile,format="hypoDD"):
 class Catalog():
     def __init__(self,locFile="hypoDD.reloc",format="hypoDD",verbose=1):
         """
-        The programme will read in hypoDD relocation file by default. If no hypoDD
+        The programme will read in catalog in format ("hypoDD", "sum", and "cata"). If no hypoDD
         file provided (locFile=None), it will generate an empty catalog. 
         A user can set up a new catalog by providing a dict in the form:
             dict[evid] = [lon,lat,dep,mag,UTCDateTime]

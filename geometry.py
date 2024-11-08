@@ -286,7 +286,15 @@ def loc_by_width_sphe(alon,alat,blon,blat,width,direction='left'):
         raise Error("Point a and b shouldn't be the same location")
     return bblon*180/pi,bblat*180/pi
 
-def cartesian_rotate(xy,center=[0,0],degree=0):
+def rotate_matrix(theta):
+    """
+    Return antickwise rotation matrix. Input unit in degree
+    """
+    thetaRad = np.radians(theta)
+    return np.array([[np.cos(thetaRad),-np.sin(thetaRad)],
+                     [np.sin(thetaRad),np.cos(thetaRad)]])
+
+def cartesian_rotate(xy,center=[0,0],angle=0):
     """
     Degree is positive for anticlockwise
     """
@@ -297,16 +305,14 @@ def cartesian_rotate(xy,center=[0,0],degree=0):
     if isinstance(center,list):
         center = np.array(center)
     logging.info("Now in function cartesian_rotate")
-    logging.info(f"Parameters: center({center[0]},{center[1]}) rotate({degree} degree)")
+    logging.info(f"Parameters: center({center[0]},{center[1]}) rotate({angle} degree)")
 
-    xy_ref = xy - center
-
-    rotate_matrix = [[np.cos(degree/180*pi),-np.sin(degree/180*pi)],[np.sin(degree/180*pi),np.cos(degree/180*pi)]]
-    rotate_matrix = np.array(rotate_matrix)
-
-    xy_rotate = np.matmul(rotate_matrix,xy_ref.T).T + center
+    tmpxy = xy - center
+    rM = rotate_matrix(angle)
+    tmpxyRot = np.matmul(tmpxy,rM)
+    xyRot = tmpxyRot + center
     
-    return xy_rotate
+    return xyRot
 
 def event_dat_rotate(inFile,center,antiClockDeg):
     """
@@ -492,6 +498,7 @@ def mesh_rotate(x1,y1,center,degree,method="Cartesian"):
 def fault_vectors(strike,dip,rake,unit='degree'):
     """
     rake: slip angle
+    The coordinate system: x(east), y(north), and z(upward)
     return
     | n: the unit normal vector of the fault plane
     | d: the unit vector of the slip direction
@@ -507,7 +514,12 @@ def fault_vectors(strike,dip,rake,unit='degree'):
         pass
     else:
         raise Exception("Wrong unit, should be 'degree' or 'radian'")
-    
+    #==================================
+    # In the conventional coordinate: x(north);y(west);z(upward)
+    # I prefer x(east);y(north);z(upward)
+    strike=strike-np.pi/2
+    #==================================
+
     n = np.zeros(3)
     n[0] = -1*np.sin(dip)*np.sin(strike)
     n[1] = -1*np.sin(dip)*np.cos(strike)

@@ -21,29 +21,29 @@ def calculate_snr(signal, noise):
     snr = 10 * np.log10(signal_power / noise_power)
     return snr
 
-def tr_snr(tr,noiseLen=0.5,sigLen=0.5,mkr='a'):
+def tr_snr(tr,noiseLen=0.5,sigLen=0.5,shift=0,mkr='a'):
     """
     Calculate the signal-to-noise ratio (SNR) of a given trace.
     
     Parameters:
-        tr (obspy.Trace): The trace to calculate the SNR for.
-        noiseLen, sigLen: noise window length and signal window length
-        mkr: the marker in the sac file
+    |    tr (obspy.Trace): The trace to calculate the SNR for.
+    |    noiseLen, sigLen: noise window length and signal window length wrt. mkr
+    |    shift: separation between signal and noise will be t(mkr)+shift
+    |    mkr: the marker in the sac file
     
     Returns:
-        float: The signal-to-noise ratio (SNR) in decibels (dB).
+    |    float: The signal-to-noise ratio (SNR) in decibels (dB).
     """
     starttime = tr.stats.starttime
-    # Get the noise window
-    mkrVal = getattr(tr.stats.sac,mkr)
+
+    delta = tr.stats.delta
     b = tr.stats.sac.b
-    tmp = tr.copy()
-    tmp = tmp.trim(starttime=starttime+mkrVal-b-noiseLen, endtime=starttime+mkrVal-b)
-    noise = tmp.data
-    
-    # Get the signal window
-    signal = tr.copy().trim(starttime=starttime+mkrVal-b, endtime=starttime+mkrVal-b+sigLen).data
-    
+    mkrVal = getattr(tr.stats.sac,mkr)
+    signalBeginTob = mkrVal-b+shift # separation points w.r.t the b value
+    idxSignal = int(signalBeginTob/delta)
+    idxNoise = int((mkrVal-b-noiseLen+shift)/delta)
+    signal = tr.data[idxSignal:idxSignal+int(sigLen/delta)]
+    noise = tr.data[idxNoise:idxSignal]
     
     # Calculate the SNR
     snr = calculate_snr(signal, noise)
