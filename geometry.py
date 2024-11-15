@@ -117,34 +117,39 @@ def loc_by_width(lon1,lat1,lon2,lat2,width,direction='right'):
     Parameters:
       lon1,lat1: longitude and latitude of tip 1
       lon2,lat2: longitude and latitude of tip 2
+          width: (deg)
       direction: The side of new points from tip 1 to tip2 direction
     """
-    dlon = (lon2 - lon1) * np.cos(np.deg2rad(lat1))
+    dlon = lon2 - lon1
     dlat = lat2 - lat1
     clat = (lat2+lat1)/2
     dist=((dlon*np.cos(clat/180*np.pi))**2+dlat**2)**0.5
-    
-    if direction == "right":  # extend width to the right 
-    	delta_lat = -width*(dlon/dist)    # cos_theta
-    	delta_lon =  width*(dlat/dist)    # sin_theta
+
+    if direction == "right":  # extend width to the right
+        v = np.cross([dlon,dlat,0],[0,0,1])
+    elif direction == "left":
+        v = np.cross([0,0,1],[dlon,dlat,0])
+        deltaLa = width*v[1]    # cos_theta
+        deltaLo = width*v[0]    # sin_theta
 
     if direction == "left":
-    	delta_lat =  width*(dlon/dist)    # cos_theta
-    	delta_lon = -width*(dlat/dist)    # sin_theta
+        deltaLa =  width*(dlon/dist)    # cos_theta
+        delta_lon = -width*(dlat/dist)    # sin_theta
 
-    new_lon1 = lon1 + delta_lon
-    new_lat1 = lat1 + delta_lat
-    new_lon2 = lon2 + delta_lon
-    new_lat2 = lat2 + delta_lat
+    new_lon1 = lon1 + deltaLo
+    new_lat1 = lat1 + deltaLa
+    new_lon2 = lon2 + deltaLo
+    new_lat2 = lat2 + deltaLa
 
     return new_lon1,new_lat1,new_lon2,new_lat2
 
-def seismic_path_calculation(e_lon,e_lat,e_dep,in_angle,vel_set):
+def seismic_path_calculation(e_dep,in_angle,vel_set):
     """
     Parameters:
         e_lon,e_lat,e_dep: the earthquake longitude, latitude and depth
         sta_lon,sta_lat: the station location
-        vel_set: array format [[dep1,vel1],[dep2,vel2]], where vel1 indicates the velocity between dep1 and dep2
+        vel_set: array format [[dep1,vel1],[dep2,vel2]], where vel1 indicates 
+        the velocity between dep1 and dep2
     """
     # initiation
     trace_points = []  
@@ -288,7 +293,7 @@ def loc_by_width_sphe(alon,alat,blon,blat,width,direction='left'):
 
 def rotate_matrix(theta):
     """
-    Return antickwise rotation matrix. Input unit in degree
+    Return 2D antickwise rotation matrix. Input unit in degree
     """
     thetaRad = np.radians(theta)
     return np.array([[np.cos(thetaRad),-np.sin(thetaRad)],
@@ -296,7 +301,7 @@ def rotate_matrix(theta):
 
 def cartesian_rotate(xy,center=[0,0],angle=0):
     """
-    Degree is positive for anticlockwise
+    angle is positive for anticlockwise
     """
     if isinstance(xy,list):
         xy = np.array(xy)
@@ -304,8 +309,6 @@ def cartesian_rotate(xy,center=[0,0],angle=0):
         raise Exception("xy should be 2 dimensional matrix")
     if isinstance(center,list):
         center = np.array(center)
-    logging.info("Now in function cartesian_rotate")
-    logging.info(f"Parameters: center({center[0]},{center[1]}) rotate({angle} degree)")
 
     tmpxy = xy - center
     rM = rotate_matrix(angle)
@@ -314,9 +317,10 @@ def cartesian_rotate(xy,center=[0,0],angle=0):
     
     return xyRot
 
-def event_dat_rotate(inFile,center,antiClockDeg):
+def event_dat_rotate(inFile,center,angle):
     """
-    Rotate event input file for tomoDD
+    Rotate the longitude and latitude of events in the event.dat (tomoDD/hypoDD) 
+    file. 
     """
     outFile = inFile+".rot"
     cont = []
@@ -329,7 +333,7 @@ def event_dat_rotate(inFile,center,antiClockDeg):
             lat = float(_lat)
             lon = float(_lon)
             xys.append([lon,lat])
-    xys_rot = spherical_rotate(xys,center=center,degree=antiClockDeg)
+    xys_rot = spherical_rotate(xys,center=center,degree=angle)
 
     f = open(outFile,'w')
     for i in range(len(cont)):
@@ -777,3 +781,78 @@ def strike_dip_from_locs(lons,lats,deps,refLon=None,refLat=None,W=1):
     dipDeg = 90-np.rad2deg(np.arctan(1/np.linalg.norm(m[:2])))
     
     return strikeAzDeg, dipDeg, refZ
+
+def vector_decompose1(v1,v2):
+    """
+    Decompose vector(v1) into the component along v2 and the component normal to v2
+    """
+    v2n = v2/np.linalg.norm(v2)
+    v1AlongV2 = np.dot(v1,v2n)*v2n
+    v1NormalV2 = v1 - v1AlongV2
+
+    return v1AlongV2, v1NormalV2
+
+def vector_decompose2(v1,v2,v3=np.array([0,0,1])):
+    """
+    Get the component of v1 in the plane defined by v2 and v3
+    """
+    vn = np.cross(v2,v3)
+    vn = vn/np.linalg.norm(vn)
+    if np.linalg.norm(vn) == 0:
+        raise Exception(f"The two vectors {v2} and {v3} are parallel!")
+    v1NormalV2v3 = np.dot(v1,vn)*vn
+    v1InV2v3 = v1 - v1NormalV2v3
+
+    return v1InV2v3, v1NormalV2v3
+
+def angle_vxvy(vx,vy,vz=[0,0,1]):
+    """
+    The angle between two vectors, the result is in degree. vz works as a reference 
+    for the determination of "mkr". The "mkr" is 1 if vx,vy, and vz follows a 
+    right-hand rule, otherwise -1.
+
+    Return
+    | angle: (unit: degree) the angle between the two vectors in degree
+    |   mkr: a marker for the degree sign. 1 means v1 in the 
+    """
+    dot_product = np.dot(vx,vy)
+    normVx = np.linalg.norm(vx)
+    normVy = np.linalg.norm(vy)
+    cosPhi = dot_product/(normVx*normVy)
+    angleRad = np.arccos(cosPhi)
+    angle = angleRad/np.pi*180
+
+    mkr = 1
+    crossProduct = np.cross(vx,vy)
+    if np.dot(crossProduct,vz) < 0:
+        mkr = -1 
+
+    return angle,mkr
+
+def dlodla2xy(dlo,dla,refLa=0):
+    """
+    Convert the difference in longitude and latitude to the x-y coordinate system.
+    Unit in degree, x: eastward (km), y: northward (km)
+    """
+    x = dlo*111.19*np.cos(refLa/180*np.pi)
+    y = dla*111.19
+    return x,y
+
+def sta2eve_xyz(evlo,evla,evdp,stlo,stla,stel):
+    """
+    Calculate the xyz location of the station w.r.t the earthquake hypocenter.
+    x: estaward; y: northward; z: upward
+    stel: (unit: km) station elevation, positive for above zero
+    """
+    xsta,ysta = dlodla2xy(stlo-evlo,stla-evla,refLa=evla)
+    zsta = evdp + stel
+    return [xsta,ysta,zsta]
+
+def in_plane_normal_vector(v1,vref):
+    """
+    In the v1_vref plane, get a vecor that is normal to v1 and point far away from v1
+    """
+    v3 = np.cross(v1,vref)  # vector normal to v1_vref plane
+    v4 = np.cross(v1,v3)    # 1) normal to v1; 2) point away from v1 and vref. 
+
+    return v4/np.linalg.norm(v4)
