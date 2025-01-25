@@ -4,6 +4,7 @@ import json
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 def sta_dist_pairs(netstas,sta_dict,group_qty=6):
     """
@@ -249,7 +250,9 @@ def sta2eqt(sta_file,out_file):
 
 
 class Sta():
-    def __init__(self,sta_file="/home/jinping/Dropbox/Weiyuan_resources/geo_elements/stations/sta_sum_202207.txt"):
+    dpDir = os.getenv("dpDir")
+    staFile = os.path.join(dpDir,"Weiyuan_resources/geo_elements/stations/sta_sum_202207.txt")
+    def __init__(self,sta_file=staFile):
         self.sta_file = sta_file
         self.dict = load_sta(sta_file)
         self.get_locs()

@@ -133,9 +133,6 @@ def phs_add_mag(phs_file,mag_file):
         for line in output_lines:
             f.write(line+"\n")
 
-
-
-
 def phs_subset(
         phsFile,
         evidLst=[],

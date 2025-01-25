@@ -11,7 +11,9 @@ class WYpara():
     '''
     This class reads parameters in "wy.para", which contains parameters for GMT plot.
     '''
-    def __init__(self,paraFile="wy.para",workDir="/home/jinping/Dropbox/Weiyuan_share",mode='normal'):
+    dpDir=os.getenv("dpDir")  # Dropbox directory
+    workDir = os.path.join(dpDir,"Weiyuan_share")
+    def __init__(self,paraFile="wy.conf",workDir=workDir,mode='normal'):
         self.dict={}
         self.dict['workDir']=workDir
         paraPth = os.path.join(workDir,paraFile)
@@ -21,8 +23,6 @@ class WYpara():
                 line = line.rstrip()
                 if mode=='debug':
                     print(line)
-                if line[:2]=="#=":                      # after this are functions
-                    break
                 if len(line)==0 or line[0]=='#' or \
                    re.split(" ",line)[0] in ["gmt","if","","elif","then","fi",""]: # ignore comment lines, gmt set lines, and shell related lines
                     continue
@@ -31,23 +31,20 @@ class WYpara():
                 para = para.strip()                     # remove fore and end spaces
                 info = info.strip()
                 info = info.strip('"')
-                if len(re.split("\$",info))>1:          # $ indicates citation of other parameters
-                    for seg in re.split("\$",info)[1:]: # seperate each citation
-                        sub = re.split("[/]",seg)[0]    # get the cited parameter name
-                        info=info.replace("$"+sub,self.dict[sub])
                 self.dict[para]=info
         f.close()
         #===============================================================================================
         # load in information
         # load_list=["city_loc",'city_label','ml_fault','zg_fault','Neo_fault','sta_loc','well']
         tmp_arr = []
-        with open(self.dict['ml_fault'],'r') as f:
-            for line in f:
-                line = line.rstrip()
-                _lon,_lat = re.split(" +",line)
-                tmp_arr.append([float(_lon),float(_lat)])
-        f.close()
-        self.dict['ml_fault']=np.array(tmp_arr)
+        if os.path.exists(self.dict['ml_fault']):
+            with open(self.dict['ml_fault'],'r') as f:
+                for line in f:
+                    line = line.rstrip()
+                    _lon,_lat = re.split(" +",line)
+                    tmp_arr.append([float(_lon),float(_lat)])
+            f.close()
+            self.dict['ml_fault']=np.array(tmp_arr)
         #---------------------------------------------------------
         tmp_dict={}
         count = 0

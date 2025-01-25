@@ -1,4 +1,5 @@
 import os
+import re
 import copy
 import numpy as np
 from PIL import Image
@@ -12,6 +13,7 @@ from math import floor,ceil
 from seisloc.statistics import sum_count_Mo,write_sum_count_Mo
 from seisloc.phase_convert import cata2fdsn
 from tqdm import tqdm
+from seisloc.text_io import _load_event_dat_etime
 
 def _load_cata(locFile,format="hypoDD"):
     if format == "hypoDD":
@@ -33,9 +35,20 @@ def _load_cata(locFile,format="hypoDD"):
                 line = line.strip()
                 _evid,_evlo,_evla,_evdp,_emag,_eday,_etime=line.split()
                 tmpDict[int(_evid)] = [float(_evlo),float(_evla),float(_evdp),float(_emag),UTCDateTime(_etime)]
-        return tmpDict
-
-
+    if format == "dat":  # event dat fromat
+        tmpDict = {}                                                             
+        f = open(locFile,'r')                                                    
+        eventLines = f.readlines()                                                    
+        for eventLine in eventLines:                                                  
+            timeSeg = eventLine[:18]                                                  
+            etime = _load_event_dat_etime(timeSeg)                                    
+            otherSeg = eventLine[18:].strip()                                         
+            _lat,_lon,_dep,_mag,_eh,_ez,_rms,_evid = re.split(" +",otherSeg)          
+            lat,lon,dep,mag,eh,ez,rms = map(float,(_lat,_lon,_dep,_mag,_eh,_ez,_rms))
+            evid = int(_evid)                                                         
+            tmpDict[evid] = [lon,lat,dep,mag,etime]
+        
+    return tmpDict 
 
 class Catalog():
     def __init__(self,locFile="hypoDD.reloc",format="hypoDD",verbose=1):
