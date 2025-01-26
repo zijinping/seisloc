@@ -126,23 +126,30 @@ def aligned_sac_datas(tr1,tr2,scc_dt,tb,te,marker='t0'):
 
     return tr1.data,tr2.data
 
-def sac_interpolation(insacPth,outsacPth,factor=10):
+def sac_interp(inS,factor=10):
     """
     Interpolate waveform data using the quadratic fitting method provided by scipy.interpolate.interp1d module
     """
-    insacPth = os.path.abspath(insacPth)
-    st = obspy.read(insacPth)
-    data = st[0].data
-    delta = st[0].stats.delta
+    data = inS[0].data
+    delta = inS[0].stats.delta
     xs = np.arange(len(data))
     f = interpolate.interp1d(xs,data,kind='quadratic')
     
     deltaNew = delta/factor
     ixs = np.arange((len(data)-1)*factor+1)*1/factor
     dataInterp = f(ixs)
-    stInterp = st.copy()
-    stInterp[0].data = dataInterp
-    stInterp[0].stats.delta = deltaNew
+    outS = inS.copy()
+    outS[0].data = dataInterp
+    outS[0].stats.delta = deltaNew
+    return outS
+
+def sac_file_interpolation(insacPth,outsacPth,factor=10):
+    """
+    Interpolate waveform data using the quadratic fitting method provided by scipy.interpolate.interp1d module
+    """
+    insacPth = os.path.abspath(insacPth)
+    st = obspy.read(insacPth)
+    stInterp = sac_interp(st,factor=factor)
     stInterp[0].write(outsacPth,format="SAC")
     
 def read_sac_ref_time(tr):
