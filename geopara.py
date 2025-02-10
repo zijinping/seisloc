@@ -11,8 +11,8 @@ class WYpara():
     '''
     This class reads parameters in "wy.para", which contains parameters for GMT plot.
     '''
-    dpDir=os.getenv("dpDir")  # Dropbox directory
-    workDir = os.path.join(dpDir,"Weiyuan_share")
+    jpDir=os.getenv("jpDir")  # Dropbox directory
+    workDir = os.path.join(jpDir,"Resources/WY")
     def __init__(self,paraFile="wy.conf",workDir=workDir,mode='normal'):
         self.dict={}
         self.dict['workDir']=workDir
@@ -23,8 +23,7 @@ class WYpara():
                 line = line.rstrip()
                 if mode=='debug':
                     print(line)
-                if len(line)==0 or line[0]=='#' or \
-                   re.split(" ",line)[0] in ["gmt","if","","elif","then","fi",""]: # ignore comment lines, gmt set lines, and shell related lines
+                if line[0] == "#":
                     continue
                 content = re.split(" +",line.rstrip())[0]
                 para,info = re.split("=",content)
@@ -131,6 +130,29 @@ class WYpara():
         f.close()
         self.dict["wells"]=tmp_arr
         f.close()
+        #---------------------------------------------------------------
+        tmpDict = {}
+        wfDepDir = self.dict["wfDepDir"]
+        for gmt in os.listdir(wfDepDir):
+            if gmt[-3:] != "gmt":
+                continue
+            gmtNm = gmt[:-4]
+            gmtPth = os.path.join(wfDepDir,gmt)
+            with open(gmtPth,'r') as f:
+                tmp_arr = []
+                for line in f:
+                    line = line.strip()
+                    if len(line) == 0:
+                        continue
+                    if line[0] == "#":
+                        continue
+                    if line[0] == ">":
+                        continue
+                    _lon,_lat= re.split(" +",line)
+                    tmp_arr.append([float(_lon),float(_lat)])
+                f.close()
+            tmpDict[gmtNm] = np.array(tmp_arr)
+        self.dict["wfDep"] = tmpDict
         #---------------------------------------------------------------
         self.vel_depths = [0.00,0.38,1.64,2.97,4.41,6.04,6.95,8.50,10.0,12.0,33.9,36.0,37.9,39.9,43.9,45.9]
         self.vel_vp =     [3.38,4.92,4.92,5.19,5.46,6.10,6.57,6.60,6.61,6.63,6.70,6.85,7.09,7.27,7.44,7.61]

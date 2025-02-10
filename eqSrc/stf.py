@@ -169,9 +169,9 @@ class StfEgfLsqr():
         if self.bpMkr == "BP":
             return f"bandpass:{self.bpL}-{self.bpH}Hz"
         elif self.bpMkr == "LP":
-            return f"lower-pass:{self.bpH}Hz"
+            return f"lowpass:{self.bpH}Hz"
         elif self.bpMkr == "HP":
-            return f"higher-pass:{self.bpL}Hz"
+            return f"highpass:{self.bpL}Hz"
 
     def plot(self):
         """
