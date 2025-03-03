@@ -1,7 +1,97 @@
-import matplotlib.pyplot as plt
-from obspy import UTCDateTime
 import numpy as np
-from seisloc.utils import time_interval_ticks
+from obspy import UTCDateTime
+import matplotlib.pyplot as plt
+
+def time_interval_ticks(b_time,e_time,interval=1,unit='month',cut_to_round=True):
+    """
+    Generate month list from two UTCDateTime objects
+    
+    Parameters:
+    |   b_time: begin time in obspy UTCDateTime format
+    |   e_time: end time in obspy UTCDateTime format
+    |     unit: interval unit, could be 'year','month','day','hour','minute',or 'second'
+  cut_to_round: round off to the unit provided (default: True).
+                E.g. unit='month' will round the  base_time to be exactly UTCDateTime(year,month,1)
+                else, base_time = b_time
+    Return
+    ------------------------------------------------
+    base_time: UTCDateTime of the start of the first month
+    tick_secs: array stores the tick points in seconds
+    """
+    assert e_time > b_time           # end time larger than begin time
+    
+    b_yr = b_time.year
+    b_mo = b_time.month
+    b_day = b_time.day
+    b_hour= b_time.hour
+    b_min = b_time.minute
+    b_sec = b_time.second
+    
+    if cut_to_round == True:
+        if unit == 'year':
+            base_time = UTCDateTime(b_yr,1,1)
+        if unit == 'month':
+            base_time = UTCDateTime(b_yr,b_mo,1)
+        elif unit == 'day':
+            base_time = UTCDateTime(b_yr,b_mo,b_day)
+        elif unit == 'hour':
+            base_time = UTCDateTime(b_yr,b_mo,b_day,b_hour)
+        elif unit == 'minute':
+            base_time = UTCDateTime(b_yr,b_mo,b_day,b_hour,b_min)
+        elif unit == 'second':
+            base_time = UTCDateTime(b_yr,b_mo,b_day,b_hour,b_min,b_sec)
+    else:
+        base_time = b_time
+    
+    tick_secs = []
+    loop_time = base_time
+    
+    if unit == 'year':
+        while loop_time < e_time:
+            tick_secs.append(loop_time - base_time)
+            yr = loop_time.year
+            mo = loop_time.month
+            dy = loop_time.day
+            hr = loop_time.hour
+            minu = loop_time.minute
+            sec = loop_time.second
+            msec = loop_time.microsecond
+            yr += interval
+            loop_time = UTCDateTime(yr,mo,dy,hr,minu,sec,msec)
+    elif unit == 'month':
+        while loop_time < e_time:
+            tick_secs.append(loop_time - base_time)
+            yr = loop_time.year
+            mo = loop_time.month
+            dy = loop_time.day
+            hr = loop_time.hour
+            minu = loop_time.minute
+            sec = loop_time.second
+            msec = loop_time.microsecond
+            mo += interval
+            if mo > 12:
+                yr += 1
+                mo -= 12
+            loop_time = UTCDateTime(yr,mo,dy,hr,minu,sec,msec)
+    elif unit in ['day','hour','minute','second']:
+        if unit == 'day':
+            interval_seconds = interval*24*60*60
+        elif unit == 'hour':
+            interval_seconds = interval*60*60
+        elif unit == 'minute':
+            interval_seconds = interval*60
+        elif unit == 'second':
+            interval_seconds = interval
+
+        while loop_time < e_time:
+            tick_secs.append(loop_time - base_time)
+            loop_time += interval_seconds
+    else:
+        raise Exception("'unit' not in ['year','month','day','hour','minute','second']")
+        
+    tick_secs.append(loop_time-base_time)
+
+    return base_time, np.array(tick_secs)
 
 def segmented_plot(xys,base_time,secs,tick_secs,
                    xlim=[],
@@ -124,7 +214,7 @@ def intervals_plot(xys,
                 hspace=None):
     """
     Description
-        Plot xy location subplots by intervals
+        Plot xy location subplots by time intervals
         
     Parameters
     """

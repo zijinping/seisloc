@@ -3,10 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def _convolve(a, b, axis=-1):                                                                                                                                                                                
+def _convolve(a, b, axis=-1):  
     return np.apply_along_axis(np.convolve, axis, a, b, mode='same')
 
-def _boundaries(freqs):                                                                                                                                                                                      
+def _boundaries(freqs): 
     freq_boundaries = np.zeros((len(freqs) + 1,), dtype=float)
     df = freqs[1] - freqs[0]
     freq_boundaries[1:] = freqs + 0.5 * df
@@ -64,11 +64,8 @@ class Bunch(dict):
     def formatted(self, fmt=None, types=False):
         """
         Return a string with keys and/or values or types.
-
         *fmt* is a format string as used in the str.format() method.
-
-        The str.format() method is called with key, value as positional
-        arguments, and klen, vlen as kwargs.  The latter are the maxima
+        The str.format() method is called with key, value as positional arguments, and klen, vlen as kwargs.  The latter are the maxima
         of the string lengths for the keys and values, respectively,
         up to respective maxima of 20 and 40.
         """
@@ -236,18 +233,17 @@ def _slice_tuple(sl, axis, ndim):
     tup[axis] = sl
     return tuple(tup)
 
-
-def _welch_params(*args, **kw):                                                                                                                                                                              
+def _welch_params(*args, **kw):
     kw = Bunch(kw)
       
     args = [np.array(x, copy=False) for x in np.broadcast_arrays(*args)]
     axis = kw.get('axis', -1)
     npts = args[0].shape[axis]
-      
+    
     noverlap = int(kw.overlap * kw.nfft)
-      
+    
     weights = window_vals(kw.nfft, kw.window)
-      
+    
     step = kw.nfft - noverlap
     ind = np.arange(0, npts - kw.nfft + 1, step)
       

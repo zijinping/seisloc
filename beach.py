@@ -13,12 +13,11 @@ def az_dip_to_beach_xy(stk,dip,phi,size):
     stkRad = np.radians(stk)
     phiRad = np.radians(phi)
     
-    l1 = np.sqrt(                                                              
-        np.power(dip, 2) / (                                              
-        np.power(np.sin(phiRad), 2) +                                         
-        np.power(np.cos(phiRad), 2) *                                         
+    l1 = np.sqrt(                                           
+        np.power(dip, 2) / (                                    
+        np.power(np.sin(phiRad), 2) + 
+        np.power(np.cos(phiRad), 2) * 
         np.power(dip, 2) / np.power(90, 2)))
-
     x1,y1 = l1*np.cos(phiRad+stkRad),l1*np.sin(phiRad+stkRad)
     
     x1 = x1*size/2/90

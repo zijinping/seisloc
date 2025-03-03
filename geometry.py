@@ -1,13 +1,25 @@
 import os
+import logging
+import subprocess
 import numpy as np
+from numba import jit
+from matplotlib import path
 from scipy.interpolate import griddata
 from math import sin,cos,asin,acos,pi,radians
-from numba import jit
-import logging
 from obspy.geodetics import gps2dist_azimuth
-import subprocess
 from seisloc.math import lsfit,weighted_lsfit
-from matplotlib import path
+
+def bdy2pts(xmin,xmax,ymin,ymax):
+    """
+    Convert boundary to points for plot
+    """
+    points = [[xmin,ymin],
+              [xmin,ymax],
+              [xmax,ymax],
+              [xmax,ymin],
+              [xmin,ymin]]
+
+    return np.array(points)
 
 def spherical_dist(lon_1,lat_1,lon_2,lat_2):
     """

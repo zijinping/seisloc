@@ -4,7 +4,7 @@ from obspy import UTCDateTime,Stream
 from obspy.io.sac.sactrace import SACTrace
 import re
 import matplotlib.pyplot as plt
-from seisloc.utils import get_st,extract_set_info
+from seisloc.wf.utils import get_st,get_st_SC,extract_dataset_info
 from seisloc.geometry import spherical_dist
 from seisloc.sta import load_sta
 import numpy as np
@@ -18,15 +18,15 @@ from numpy import polyfit
 import glob
 import multiprocessing as mp
 
-def gen_tele_files( datasetPth,
-                    staFile,
-                    minMag,
-                    dist_range,
-                    client_name = "IRIS",
-                    taup_model="iasp91",
-                    tele_dir = "tele_event"):
+def gen_tele_files( dataBase,
+                    staTxt:str,
+                    minMag:float,
+                    distRange:list,
+                    clientName = "IRIS",
+                    taupModel="iasp91",
+                    teleDir = "tele_events"):
     """
-    Function first searches for suitable tele-event based on condtions provided:
+    Function first searches for suitable tele-event based on below condtions:
         > starttime
         > endtime
         > minmagnitude
@@ -36,88 +36,88 @@ def gen_tele_files( datasetPth,
     Parameters:
       datasetPth: the path of the dataset. The program will extract information
                     of this dataset, including starttime and endtime
-          staFile: station file for station longitude and latitude information
-           minMag: minimum magnitude of tele-event for plot
-        dist_range: [d1,d2] in degree
-       client_name: default "IRIS", check obspy.clients.fdsn.client.Client.__init__()
+         staFile: station file for station longitude and latitude information
+          minMag: minimum magnitude of tele-event for plot
+      dist_range: [d1,d2] in degree
+     client_name: default "IRIS", check obspy.clients.fdsn.client.Client.__init__()
                      for detail
-        taup_model: default "iasp91", check folder obspy/taup/data/ for more model
-          tele_dir: target dir
+      taup_model: default "iasp91", check folder obspy/taup/data/ for more models
+         teleDir: target dir
 
     """    
     logger = logging.getLogger()
     #---------- main program ------------------------------------------------
-    if not os.path.exists(tele_dir):
-        os.mkdir(tele_dir)
+    if not os.path.exists(teleDir):
+        os.mkdir(teleDir)
         logger.info("tele dir created.")
-    set_info = extract_set_info(datasetPth,staFile)
-    c_lon,c_lat = set_info["center"][0]
-    starttime = UTCDateTime(set_info['startTime'][:-1])  
-    endtime = UTCDateTime(set_info['endTime'][:-1])
-    netstas = list(set_info["availYearDays"].keys())
+    setInfo = extract_dataset_info(dataBase,staTxt)
+    clo,cla = setInfo["center"][0]
+    starttime = UTCDateTime(setInfo['startTime'][:-1])  
+    endtime = UTCDateTime(setInfo['endTime'][:-1])
+    netstas = list(setInfo["availYearDays"].keys())
     
-    sta_dict = load_sta(staFile)
-    client=Client(client_name)
-    event_list=client.get_events(starttime=starttime,
+    dfStas = load_sta(staTxt)
+    client=Client(clientName)
+    eventLst=client.get_events(starttime=starttime,
                                  endtime=endtime,
                                  minmagnitude=minMag)
     
-    columns=["e_id","e_time","e_lon","e_lat","e_dep","e_dist","e_mag","e_mag_type"]
+    columns=["elabel","etime","evlo","evla","evdp","edist","emag","emagType"]
     df = pd.DataFrame(columns=columns)
-    for event in event_list:
-        e_id = str(event["origins"][0]["resource_id"])[-8:]
-        e_time = event["origins"][0]["time"]
-        e_lon = event["origins"][0]["longitude"]
-        e_lat = event["origins"][0]["latitude"]
-        e_dep = event["origins"][0]["depth"]
-        e_mag = event['magnitudes'][0]["mag"]
-        e_mag_type = event['magnitudes'][0]["magnitude_type"]
-        ec_dist = spherical_dist(e_lon,e_lat,c_lon,c_lat) #distance from dataset center
-        if ec_dist>=dist_range[0] and ec_dist <= dist_range[1]:
-            df.loc[df.shape[0]+1]=[e_id,e_time,e_lon,e_lat,e_dep,ec_dist,e_mag,e_mag_type]
+    for event in eventLst:
+        elabel   = str(event["origins"][0]["resource_id"])[-8:]
+        etime    = event["origins"][0]["time"]
+        evlo     = event["origins"][0]["longitude"]
+        evla     = event["origins"][0]["latitude"]
+        evdp     = event["origins"][0]["depth"]
+        emag     = event['magnitudes'][0]["mag"]
+        emagType = event['magnitudes'][0]["magnitude_type"]
+        ecDist   = spherical_dist(evlo,evla,clo,cla) #distance from dataset center
+        if ecDist>=distRange[0] and ecDist <= distRange[1]:
+            df.loc[df.shape[0]+1]=[elabel,etime,evlo,evla,evdp,ecDist,emag,emagType]
 
-    model = TauPyModel(taup_model)
+    model = TauPyModel(taupModel)
     for index,row in df.iterrows():
-        e_time=row["e_time"]
-        e_lon=row["e_lon"]
-        e_lat=row["e_lat"]
-        e_dep=row["e_dep"]/1000
-        e_mag=row["e_mag"]
-        e_mag_type=row["e_mag_type"]
-        logger.info(f"Now process event: time:{e_time} mag:{e_mag}")
-        with open(os.path.join(tele_dir,e_time.strftime("%Y%m%d%H%M%S")+".tele"),"w") as f:
-            f.write(f"{e_time} {e_lon} {e_lat} {e_dep} {e_mag} {e_mag_type}\n")
-            cont_list=[]
-            dist_list=[]
+        etime=row["etime"]
+        evlo=row["evlo"]
+        evla=row["evla"]
+        evdp=row["evdp"]/1000
+        emag=row["emag"]
+        emagType=row["emagType"]
+        logger.info(f"Now process event: time:{etime} mag:{emag}")
+        with open(os.path.join(teleDir,etime.strftime("%Y%m%d%H%M%S")+".tele"),"w") as f:
+            f.write(f"{etime} {evlo} {evla} {evdp} {emag} {emagType}\n")
+            contLst=[]  # content
+            distLst=[]
             for netsta in netstas:
                 net = netsta[:2]
                 sta = netsta[2:]
-                sta_lon = sta_dict[net][sta][0]
-                sta_lat = sta_dict[net][sta][1]
-                es_dist = spherical_dist(e_lon,e_lat,sta_lon,sta_lat)
-                arrivals=model.get_travel_times(source_depth_in_km=e_dep,
-                                                distance_in_degree=es_dist,
+                dfSta = dfStas[(dfStas['net']==net)&(dfStas['sta']==sta)]
+                stlo = dfSta['stlo'].values[0]
+                stla = dfSta['stla'].values[0]
+                esDist = spherical_dist(evlo,evla,stlo,stla)
+                arrivals=model.get_travel_times(source_depth_in_km=evdp,
+                                                distance_in_degree=esDist,
                                                 phase_list=["P","S"])
                 try:#In case no content error
-                    p_arrival=arrivals[0].time
-                    s_arrival=arrivals[1].time
-                    cont_list.append([netsta,p_arrival,s_arrival,es_dist*111])
-                    dist_list.append([es_dist*111])
-                    dist_list_sort.append([es_dist*111])
+                    parrivals=arrivals[0].time
+                    sarrivals=arrivals[1].time
+                    contLst.append([netsta,parrivals,sarrivals,esDist*111])
+                    distLst.append([esDist*111])
                 except:
                     continue
-            if len(dist_list) == 0:
+            if len(distLst) == 0:
                 continue
-            for dist in sorted(dist_list):
-                idx=dist_list.index(dist)
-                f.write(f"{cont_list[idx][0]} ")       # netsta       
-                f.write(f"{cont_list[idx][1]} ")       # P arrival time
-                f.write(f"{cont_list[idx][2]} ")       # S arrival time
-                f.write(f"{cont_list[idx][3]}\n")      # event distance
+            for dist in sorted(distLst):
+                idx=distLst.index(dist)
+                f.write(f"{format(contLst[idx][0],'7s')} ")       # netsta       
+                f.write(f"{format(contLst[idx][1],'10.3f')} ")       # P arrival time
+                f.write(f"{format(contLst[idx][2],'10.3f')} ")       # S arrival time
+                f.write(f"{format(contLst[idx][3],'10.2f')}\n")      # event distance
         f.close()
 
 
-def readTelePhase(cont):
+def read_tele_phase(cont):
     """
     Read stations tele event arrival time from the tele file
     Parameters:
@@ -134,16 +134,16 @@ def readTelePhase(cont):
         staPhaList.append([netsta,P_time,S_time,dist])
     return staPhaList
 
-def _trimStaTeleWf(net,sta,startTime,endTime,wfFolder,teleWfDir,mode,pad,fill_value):
+def _trim_sta_tele_wf(net,sta,startTime,endTime,wfFolder,teleWfDir,mode,pad,fill_value):
         if mode == "normal":
             st=get_st(net,sta,startTime,endTime,wfFolder,pad=True,fill_value=0)
         if mode == "SC":
             st=get_st_SC(net,sta,startTime,endTime,wfFolder,pad=True,fll_value=0)
-        st = st.select(component="*Z")                # Use Z component
+        st = st.select(component="*Z")                    # Use Z component
         if len(st) != 0:                                  # len(st)==0 means no waveform
             st[0].write(os.path.join(teleWfDir,net+"_"+sta+".mseed"))  
 
-def trimTeleWf(teleFile,wfRoot,pBefore=50,sAfter=50,mode="normal"):
+def trim_tele_wf(teleFile,wfRoot,pBefore=50,sAfter=50,mode="normal"):
     """
     test
     Description:
@@ -163,7 +163,7 @@ def trimTeleWf(teleFile,wfRoot,pBefore=50,sAfter=50,mode="normal"):
          pBefore: start trim point is pBefore seconds before the earliest P
           sAfter: end trim point the pAster seconds after the latest S
             mode: default "normal". "SC" indicates retrieving Sichuan
-                    Agency Dataset,uncommon used
+                    Agency Dataset,uncommonly used
     """
 
     logger = logging.getLogger()
@@ -180,7 +180,7 @@ def trimTeleWf(teleFile,wfRoot,pBefore=50,sAfter=50,mode="normal"):
     
     _etime,_elon,_elat,_edep,_emag,etype = cont[0].split()
     etime=UTCDateTime(_etime[:-1])
-    staPhaList = readTelePhase(cont)
+    staPhaList = read_tele_phase(cont)
 
     min_P = staPhaList[0][1]
     max_S = staPhaList[-1][2]
@@ -205,12 +205,12 @@ def trimTeleWf(teleFile,wfRoot,pBefore=50,sAfter=50,mode="normal"):
     stsum.write(os.path.join(teleFile[:-5]+".mseed"))
 
 
-def trimTeleWfs(teleRoot="tele_event",wfRoot="day_data",processes=1):
-    teleFiles = glob.glob(os.path.join(teleRoot,"*tele"))
+def trim_tele_wfs(teleDir="tele_event",wfBase="day_data",processes=1):
+    teleFiles = glob.glob(os.path.join(teleDir,"*tele"))
     pool = mp.Pool(processes=processes)
     for teleFile in teleFiles:           # Loop for each event
-        #trimTeleWf(teleFile,wfRoot)
-        pool.apply_async(trimTeleWf,args=(teleFile,wfRoot))
+        #trim_tele_wf(teleFile,wfRoot)
+        pool.apply_async(trim_tele_wf,args=(teleFile,wfBase))
     print(f"Multiprocessing with cores = {processes}")
     pool.close()
     pool.join()
@@ -245,7 +245,7 @@ def axisRange(staPhaList,plotPhase,xOffsets,yOffsetRatios):
         
     return xstart,xend,ystart,yend
 
-def plotTeleWf(teleFile,
+def plot_tele_wf(teleFile,
               wfRoot = "day_data",
               stasSel="all",
               staExclude = [],
@@ -277,7 +277,7 @@ def plotTeleWf(teleFile,
 
     mseed_file = teleFile.rsplit(".",1)[0]+".mseed"
     if not os.path.exists(mseed_file):
-        logging.error("mseed file not exits, did you run the trimTeleWf?")
+        logging.error("mseed file not exits, did you run the trim_tele_wf?")
         return                              # end the programme
     else:
         saved_st = obspy.read(mseed_file)
@@ -296,7 +296,7 @@ def plotTeleWf(teleFile,
     elat=float(_elat)
     emag=float(_emag)
 
-    staPhaList = readTelePhase(cont)
+    staPhaList = read_tele_phase(cont)
 
     xstart,xend,ystart,yend = axisRange(staPhaList,plotPhase,xOffsets,yOffsetRatios)
 
@@ -372,7 +372,7 @@ def plotTeleWf(teleFile,
     if oFormat.lower()=="png":
         plt.savefig(teleFile[:-5]+saveNameMkr+".png")
 
-def plotTeleWfs(teleRoot="tele_event",wfRoot="day_data",
+def plot_tele_wfs(teleDir="tele_event",wfBase="day_data",
                           stasSel='all',
                           staExclude = [],
                           plotPhase = "P",
@@ -387,10 +387,10 @@ def plotTeleWfs(teleRoot="tele_event",wfRoot="day_data",
                           tickHeight=0.01,
                           oFormat="png",
                           saveNameMkr=""):
-    teleFiles = glob.glob(os.path.join(teleRoot,"*tele"))
+    teleFiles = glob.glob(os.path.join(teleDir,"*tele"))
     for teleFile in teleFiles:           # Loop for each event
-            plotTeleWf(teleFile,
-                          wfRoot = wfRoot,
+            plot_tele_wf(teleFile,
+                          wfRoot = wfBase,
                           stasSel=stasSel,
                           staExclude = staExclude,
                           plotPhase = plotPhase,
@@ -407,7 +407,7 @@ def plotTeleWfs(teleRoot="tele_event",wfRoot="day_data",
                           saveNameMkr=saveNameMkr)
 
 
-def plotTeleDiffs(plotPhase="P",
+def plot_tele_diffs(plotPhase="P",
                  tb=-5,
                  te=20,
                  root="tele_event",
@@ -427,8 +427,8 @@ def plotTeleDiffs(plotPhase="P",
     """
     logger = logging.getLogger()
 #---------------------------------------------------------------------------    
-    tele_files = glob.glob(os.path.join(root,"*tele"))
-    for tele_file in tqdm(tele_files):
+    teleFiles = glob.glob(os.path.join(root,"*tele"))
+    for tele_file in tqdm(teleFiles):
         with open(tele_file,'r') as f:
             lines = f.readlines()
         f.close()
@@ -441,22 +441,22 @@ def plotTeleDiffs(plotPhase="P",
         st.taper(max_percentage=0.05)
         if stasSel!="all":
             assert isinstance(stasSel,list)
-            st_new = Stream()
+            stNew = Stream()
             for tr in st:
                 if tr.stats.station in stasSel:
-                    st_new.append(tr)
+                    stNew.append(tr)
         else:
-            st_new = st
-        st_new = st_new.decimate(factor=decimateFactor)
-        st_new.filter("bandpass",freqmin=freqRange[0],freqmax=freqRange[1],zerophase=True)
+            stNew = st
+        stNew = stNew.decimate(factor=decimateFactor)
+        stNew.filter("bandpass",freqmin=freqRange[0],freqmax=freqRange[1],zerophase=True)
 
-        ref_sta_set =False
+        refSta_set =False
 
         maxtimes = []
         sta_sequence = []
-        if len(st_new) == 0: # debug
+        if len(stNew) == 0: # debug
             continue
-        delta = st_new[0].stats.delta
+        delta = stNew[0].stats.delta
         
         str_time,_,_,_dep,_mag,type = lines[0].split()
         etime = UTCDateTime(str_time)
@@ -466,8 +466,8 @@ def plotTeleDiffs(plotPhase="P",
             netsta,_p,_s,_dist = line.split()
             net = netsta[:2]
             sta = netsta[2:]
-            st_sel = st_new.select(network=net,station=sta,component='*Z')
-            if len(st_sel)==0:
+            stSel = stNew.select(network=net,station=sta,component='*Z')
+            if len(stSel)==0:
                 continue
             if plotPhase == "P":
                 ttb = etime + float(_p) + tb
@@ -478,13 +478,13 @@ def plotTeleDiffs(plotPhase="P",
             if plotPhase == "PS":
                 ttb = etime + float(_p) + tb
                 tte = etime + float(_s)+ te
-            st_sel = st_sel.trim(starttime=ttb,endtime=tte)
-            sta_tr = st_sel[0]
-            if not ref_sta_set:
-                ref_sta = sta
-                ref_sta_set = True
+            stSel = stSel.trim(starttime=ttb,endtime=tte)
+            sta_tr = stSel[0]
+            if not refSta_set:
+                refSta = sta
+                refSta_set = True
                 continue
-            ref_tr = st_new.select(station=ref_sta,component="*Z")[0]
+            ref_tr = stNew.select(station=refSta,component="*Z")[0]
             try:
                 corr_result = xcorr(sta_tr.data,ref_tr.data,maxlag)
             except:
