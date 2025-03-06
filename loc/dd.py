@@ -565,30 +565,7 @@ def rotDD(ddfile,center,rotate):
     
     writefile(new_cont,ddfile+".rot")
 
-def subset_dtcc(evids,ccFilePth,saveFilePth="",useStas=[]):
-    linesUse = []      
-    ccFileName = os.path.basename(ccFilePth)
-    with open(ccFilePth,'r') as f:
-        for line in tqdm(f):  
-            if line[0] == "#":
-                record=False
-                _,_evid1,_evid2,_ = line.split()
-                if int(_evid1) in evids or int(_evid2) in evids:
-                    linesUse.append(line)
-                    record = True
-            else:          
-                if record==True:
-                    if useStas==[]:
-                        linesUse.append(line)
-                    else:
-                        sta = re.split(" +",line)[0]
-                        if sta in useStas:
-                            linesUse.append(line)
-    if saveFilePth=="":
-        saveFilePth=ccFileName+'.subset'
-    with open(saveFilePth,'w') as f:
-        for line in linesUse:
-            f.write(line)
+
 
 def subset_dd_file(evids,ddFilePth,saveFilePth=""):
     linesUse = []      

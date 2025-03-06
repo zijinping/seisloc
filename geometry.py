@@ -1,4 +1,5 @@
 import os
+import math
 import logging
 import subprocess
 import numpy as np
@@ -7,7 +8,209 @@ from matplotlib import path
 from scipy.interpolate import griddata
 from math import sin,cos,asin,acos,pi,radians
 from obspy.geodetics import gps2dist_azimuth
-from seisloc.math import lsfit,weighted_lsfit
+from seisloc.math.math import lsfit,weighted_lsfit
+
+def move_by_dist_az_sphere(laAdeg, loAdeg, distKm, az, R=6371.0):
+    """
+    Calculate the destination latitude/longitude on a sphere after traveling a 
+    certain distance along a specific azimuth.
+    
+    Args:
+      lat_A_deg (float): Starting latitude in degrees
+      lon_A_deg (float): Starting longitude in degrees
+    bearing_deg (float): Bearing in degrees (0° is north, increases clockwise)
+    distance_km (float): Distance to travel in kilometers
+              R (float): Earth radius in kilometers (default 6371.0)
+        
+    Returns:
+        (lat_B_deg, lon_B_deg): Destination latitude and longitude in degrees
+    """
+    laA = math.radians(laAdeg)
+    loA = math.radians(loAdeg)
+    alpha = math.radians(az)
+    theta = distKm / R
+
+    sinPhi1 = math.sin(laA)
+    cosPhi1 = math.cos(laA)
+    sinTheta = math.sin(theta)
+    cosTheta = math.cos(theta)
+    sinAlpha = math.sin(alpha)
+    cosAlpha = math.cos(alpha)
+
+    sinPhi2 = sinPhi1 * cosTheta + cosPhi1 * sinTheta * cosAlpha
+    sinPhi2 = max(min(sinPhi2, 1.0), -1.0)
+    phi2 = math.asin(sinPhi2)
+
+    y = sinAlpha * sinTheta
+    x = cosTheta * cosPhi1 - sinPhi1 * sinTheta * cosAlpha
+    delta_lambda = math.atan2(y, x)
+
+    loB = loA + delta_lambda
+    loB = (loB + math.pi) % (2 * math.pi) - math.pi
+
+    laBdeg = math.degrees(phi2)
+    loBdeg = math.degrees(loB)
+    
+    return round(laBdeg, 6), round(loBdeg, 6)
+
+
+def dist_az_sphere(lat_A_deg, lon_A_deg, lat_B_deg, lon_B_deg, R=6371.0):
+    """
+    Calculate the great-circle distance and bearing between two points on a sphere.
+    
+    Args:
+        lat_A_deg, lon_A_deg (float): Latitude and longitude of point A in degrees
+        lat_B_deg, lon_B_deg (float): Latitude and longitude of point B in degrees
+        R (float): Earth radius in kilometers (default 6371.0)
+        
+    Returns:
+        distance_km (float): Great-circle distance in kilometers
+        bearing_deg (float): Bearing in degrees, 0° is north, increases clockwise
+    """
+    lat_A = math.radians(lat_A_deg)
+    lon_A = math.radians(lon_A_deg)
+    lat_B = math.radians(lat_B_deg)
+    lon_B = math.radians(lon_B_deg)
+    d_lon = lon_B - lon_A
+
+    cos_term = (math.sin(lat_A) * math.sin(lat_B) +
+                math.cos(lat_A) * math.cos(lat_B) * math.cos(d_lon))
+    distance_km = R * math.acos(max(min(cos_term, 1.0), -1.0))
+
+    y = math.sin(d_lon) * math.cos(lat_B)
+    x = (math.cos(lat_A) * math.sin(lat_B) -
+         math.sin(lat_A) * math.cos(lat_B) * math.cos(d_lon))
+    bearing_rad = math.atan2(y, x)
+    bearing_deg = math.degrees(bearing_rad) % 360
+
+    return distance_km, bearing_deg
+
+def loc_by_width(la1:float,lo1:float,la2:float,lo2:float,width:float,direction='right',mode="geo")->tuple:
+    """
+    Given points A(la1,lo1) and B(la2,lo2), extend A and B laterally to new positions 
+    according to width and direction provided under the sphere earth model.
+    If mode is "normal", then the calculation will be in the Cartesian model.
+
+    Parameters:
+      la1,lo1: latitude and longitude of point A
+      la2,lo2: latitude and longitude of point B
+        width: (kilometer)
+    direction: the side of new points wrt. A->B
+         mode: default "geo", if "normal", calculation will be in Cartesian
+    """
+    if mode == "geo":
+        dist, az = dist_az_sphere(la1,lo1,la2,lo2)
+        if direction == "right":  # extend width to the right
+            la1New,lo1New = move_by_dist_az_sphere(la1,lo1,width,az+90)
+            la2New,lo2New = move_by_dist_az_sphere(la2,lo2,width,az+90)
+        elif direction == "left":
+            la1New,lo1New = move_by_dist_az_sphere(la1,lo1,width,az-90)
+            la2New,lo2New = move_by_dist_az_sphere(la2,lo2,width,az-90)
+        else:
+            raise Exception("direction should be 'right' or 'left'")
+        
+        return la1New,lo1New,la2New,lo2New
+    elif mode == "normal":
+        # use the Cartesian model
+        x1 = lo1; y1 = la1
+        dx = x2 - x1
+        x2 = lo2; y2 = la2
+        dy = y2 - y1
+        dist = ((x2-x1)**2+(y2-y1)**2)**0.5
+        if direction == "right":
+            cross = np.cross([dx,dy,0],[0,0,1])
+            v = cross/np.linalg.norm(cross)
+        elif direction == "left":
+            cross = np.cross([0,0,1],[dx,dy,0])
+            v = cross/np.linalg.norm(cross)
+        else:
+            raise Exception("direction should be 'right' or 'left'")
+        deltaY = width*v[1]    # cos_theta
+        deltaX = width*v[0]    # sin_theta
+        x1New = x1 + deltaX
+        y1New = y1 + deltaY
+        x2New = x2 + deltaX
+        y2New = y2 + deltaY
+
+        return y1New,x1New,y2New,x2New
+    else:
+        raise Exception("mode should be 'geo' or 'normal'")
+
+def latlon_to_xyz(lat, lon, R=6371e3):
+    """
+    Convert latitude/longitude to 3D Cartesian coordinates (in meters).
+    
+    Args:
+        lat (float or ndarray): Latitude in degrees
+        lon (float or ndarray): Longitude in degrees
+        R (float): Earth radius in meters (default 6371e3)
+        
+    Returns:
+        ndarray: 3D coordinates [x, y, z]
+    """
+    lat_rad = np.radians(lat)
+    lon_rad = np.radians(lon)
+    x = R * np.cos(lat_rad) * np.cos(lon_rad)
+    y = R * np.cos(lat_rad) * np.sin(lon_rad)
+    z = R * np.sin(lat_rad)
+    return np.column_stack([x, y, z]) if isinstance(lat, np.ndarray) else np.array([x, y, z])
+
+
+def signed_projections_sphere(A_lat, A_lon, B_lat, B_lon, C_lats, C_lons, R=6371e3):
+    """
+    Compute the signed parallel and perpendicular distances from point(s) C to the great-circle arc from A to B (strict spherical model).
+    
+    Args:
+        A_lat, A_lon (float): Latitude and longitude of point A in degrees
+        B_lat, B_lon (float): Latitude and longitude of point B in degrees
+        C_lats, C_lons (array-like): Latitudes and longitudes of point(s) C in degrees
+        R (float): Earth radius in meters (default 6371e3)
+        
+    Returns:
+        d_parallel (ndarray): Signed arc length along AB (meters). Positive along AB's direction.
+        d_perpendicular (ndarray): Signed perpendicular arc length (meters). Sign determined by the normal of OA×OB.
+    """
+    OA = latlon_to_xyz(A_lat, A_lon, R)
+    OB = latlon_to_xyz(B_lat, B_lon, R)
+    OC = latlon_to_xyz(C_lats, C_lons, R)
+
+    n = np.cross(OA, OB)
+    n_norm = np.linalg.norm(n)
+    AB = OB - OA
+    AB_unit = AB / np.linalg.norm(AB)
+
+    t = np.dot(OC, n) / n_norm**2
+    OP_plane = OC - t.reshape(-1, 1) * n
+    OP_norm = OP_plane / np.linalg.norm(OP_plane, axis=1, keepdims=True) * R
+
+    OA_unit = OA / R
+    OP_unit = OP_norm / R
+    cos_theta_AP = np.sum(OA_unit * OP_unit, axis=1)
+    theta_AP = np.arccos(np.clip(cos_theta_AP, -1, 1))
+    d_parallel = R * theta_AP
+
+    AP_vectors = OP_norm - OA.reshape(1, 3)
+    sign_parallel = np.sign(np.einsum('ij,j->i', AP_vectors, AB_unit))
+    d_parallel *= sign_parallel
+
+    OC_dot_n = np.dot(OC, n)
+    sign_perp = np.sign(OC_dot_n)
+    sin_theta = np.abs(OC_dot_n) / (R * n_norm)
+    theta_perp = np.arcsin(np.clip(sin_theta, 0, 1))
+    d_perpendicular = sign_perp * R * theta_perp
+
+    return d_parallel/1000, d_perpendicular/1000
+
+def spherical_dist(lon_1,lat_1,lon_2,lat_2):
+    """
+    Calculate the distance of two postions and return distance in degree
+    """
+    lon_1 = radians(lon_1)
+    lat_1 = radians(lat_1)
+    lon_2 = radians(lon_2)
+    lat_2 = radians(lat_2)
+    a=acos(sin(lat_1)*sin(lat_2)+cos(lat_1)*cos(lat_2)*cos(lon_2-lon_1))
+    return a*180/pi
 
 def bdy2pts(xmin,xmax,ymin,ymax):
     """
@@ -20,17 +223,6 @@ def bdy2pts(xmin,xmax,ymin,ymax):
               [xmin,ymin]]
 
     return np.array(points)
-
-def spherical_dist(lon_1,lat_1,lon_2,lat_2):
-    """
-    Calculate the distance of two postions and return distance in degree
-    """
-    lon_1 = radians(lon_1)
-    lat_1 = radians(lat_1)
-    lon_2 = radians(lon_2)
-    lat_2 = radians(lat_2)
-    a=acos(sin(lat_1)*sin(lat_2)+cos(lat_1)*cos(lat_2)*cos(lon_2-lon_1))
-    return a*180/pi
 
 @jit(nopython=True)
 def in_rectangle(locs,alon,alat,blon,blat,width,mode='normal'):
@@ -78,13 +270,25 @@ def in_rectangle(locs,alon,alat,blon,blat,width,mode='normal'):
             results[i,1]=proj_length
     return results
 
-def in_polygon(locs,polygon):
+def in_polygon(xys,polygon,mode="normal"):
     """
-    locs,polygon: two-dimensional numpy array or list
-    return a boolean array
+    Check if points are inside the polygon
+    mode: "normal" or "geo"
+
+    xys: list of [lon,lat]
+    polygon: list of [lon,lat]
     """
-    p = path.Path(polygon)
-    return p.contains_points(locs)
+    if mode == "geo":
+        results = []
+        vertices = [s2.S2LatLng.FromDegrees(lat, lon).ToPoint() for (lat, lon) in polygon]
+        p = s2.S2Loop(vertices)
+        for xy in xys:
+            point = s2.S2LatLng.FromDegrees(xy[1],xy[0]).ToPoint()
+            results.append(p.Contains(point))
+        return results
+    if mode == "normal":
+        p = path.Path(polygon)
+        return p.contains_points(xys)
 
 def in_ellipse(xy_list,width,height,angle=0,xy=[0,0]):
     """
@@ -122,38 +326,7 @@ def in_ellipse(xy_list,width,height,angle=0,xy=[0,0]):
         
     return idxs
 
-def loc_by_width(lon1,lat1,lon2,lat2,width,direction='right'):
-    """
-    Calculate the points of a rectangle with width and two tips provided.
 
-    Parameters:
-      lon1,lat1: longitude and latitude of tip 1
-      lon2,lat2: longitude and latitude of tip 2
-          width: (deg)
-      direction: The side of new points from tip 1 to tip2 direction
-    """
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    clat = (lat2+lat1)/2
-    dist=((dlon*np.cos(clat/180*np.pi))**2+dlat**2)**0.5
-
-    if direction == "right":  # extend width to the right
-        v = np.cross([dlon,dlat,0],[0,0,1])
-    elif direction == "left":
-        v = np.cross([0,0,1],[dlon,dlat,0])
-        deltaLa = width*v[1]    # cos_theta
-        deltaLo = width*v[0]    # sin_theta
-
-    if direction == "left":
-        deltaLa =  width*(dlon/dist)    # cos_theta
-        delta_lon = -width*(dlat/dist)    # sin_theta
-
-    new_lon1 = lon1 + deltaLo
-    new_lat1 = lat1 + deltaLa
-    new_lon2 = lon2 + deltaLo
-    new_lat2 = lat2 + deltaLa
-
-    return new_lon1,new_lat1,new_lon2,new_lat2
 
 def seismic_path_calculation(e_dep,in_angle,vel_set):
     """
@@ -204,104 +377,7 @@ def seismic_path_calculation(e_dep,in_angle,vel_set):
     print(trace_points)
     return np.array(trace_points)
 
-def loc_by_width_sphe(alon,alat,blon,blat,width,direction='left'):
-    """
-    Calculate the points of a rectangle with width and two tips provided.
-    a,b,N,aa,bb is the start point,end point, north point, calculated aa and bb
-    Parameters:
-      alon,alat: longitude and latitude of tip a
-      blon,blat: longitude and latitude of tip b
-          width: width in degree
-      direction: The side of new points from tip a to tip b direction
-    """
-    sphe_dist = spherical_dist(alon,alat,blon,blat)
-    alon,alat,blon,blat,sphe_dist,width=list(map(radians,[alon,alat,blon,blat,sphe_dist,width]))
-    dlon = blon - alon
-    dlat = blat - alat
-    if dlon>0 and dlat<0: # get angle loc1-loc2-N pole
-        if direction=="left":
-            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
-            Nbbb = pi/2-abN
-            bN = pi/2-blat
-            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
-            bblat = pi/2-Nbb
-            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
-            bblon=(blon+bNbb)
-        elif direction=="right":
-            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
-            Nbbb = pi/2+abN
-            bN = pi/2-blat
-            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
-            bblat = pi/2-Nbb
-            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
-            bblon=(blon-bNbb)
-            
-    elif dlon>0 and dlat>0:
-        if direction=="left":
-            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
-            Nbbb = abN
-            bN = pi/2-blat
-            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
-            bblat = pi/2-Nbb
-            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
-            bblon=(blon-bNbb)
-        elif direction=="right":
-            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
-            Nbbb = pi-abN
-            bN = pi/2-blat
-            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
-            bblat = pi/2-Nbb
-            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
-            bblon=(blon+bNbb)
-    elif dlon<0 and dlat>0:
-        if direction=="left":
-            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
-            Nbbb = abN
-            bN = pi/2-blat
-            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
-            bblat = pi/2-Nbb
-            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
-            bblon=(blon-bNbb)
-        elif direction=="right":
-            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
-            Nbbb = pi-abN
-            bN = pi/2-blat
-            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
-            bblat = pi/2-Nbb
-            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
-            bblon=(blon+bNbb)
-    elif dlon<0 and dlat>0:
-        if direction=="right":
-            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
-            Nbbb = abN
-            bN = pi/2-blat
-            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
-            bblat = pi/2-Nbb
-            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
-            bblon=(blon-bNbb)
-        elif direction=="left":
-            abN = asin(sin(pi/2-alat)*sin(dlon)/sin(sphe_dist))
-            Nbbb = abN
-            bN = pi/2-blat
-            Nbb = acos(cos(bN)*cos(width)+sin(bN)*sin(width)*cos(Nbbb))
-            bblat = pi/2-Nbb
-            bNbb=asin(sin(width)*sin(Nbbb)/sin(Nbb))
-            bblon=(blon+bNbb)
-    elif dlon == 0:
-        if direction=='right':
-            bblon = blon+dlat/np.abs(dlat)*width
-        elif direction=="left":
-            bblon = blon-dlat/np.abs(dlat)*width
-        bblat = blat  
-    elif dlat == 0:
-        if direction=='right':
-            bblat = blat-dlon/np.abs(dlon)*width
-        elif direction=="left":
-            bblat = blat+dlon/np.abs(dlon)*width
-        bblon = blon   
-    elif dlat==0 and dlon==0:
-        raise Error("Point a and b shouldn't be the same location")
-    return bblon*180/pi,bblat*180/pi
+
 
 def rotate_matrix(theta):
     """

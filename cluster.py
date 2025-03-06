@@ -8,10 +8,10 @@ from matplotlib.colors import LinearSegmentedColormap
 from scipy.cluster.hierarchy import average, fcluster
 from scipy.spatial.distance import pdist
 from scipy.cluster.hierarchy import dendrogram, linkage
-from seisloc.dd import load_DD
+from seisloc.loc.dd import load_DD
 from obspy.geodetics import gps2dist_azimuth
 import pickle
-from seisloc.scc import load_dtcc
+from seisloc.loc.dtcc import load_dtcc
 
 class EqCluster():
     def __init__(self,

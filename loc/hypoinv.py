@@ -25,9 +25,7 @@ import subprocess
 import time
 import pickle
 from seisloc.geometry import in_rectangle,loc_by_width
-from seisloc.text_io import read_y2000_event_line,read_y2000_phase_line
-
-
+from seisloc.loc.text_io import read_y2000_event_line,read_y2000_phase_line
 
 def invmod2vel(out_file,vp_file,vs_file="",ps_ratio=1.73,vpdamp=1,vsdamp=1,headLine="Velocity model from HYPOINVERSE"):
     """

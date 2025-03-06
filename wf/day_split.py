@@ -117,7 +117,6 @@ def get_trim_idxs(trimBtime,trimEtime,timePoints):
     return idxa,idxb
 
 def cut_and_save_day_wf(dataPths,idxa,idxb,trimBtime,trimEtime,fileFmt,outFdr,net,sta):
-    print(dataPths,idxa,idxb,trimBtime,trimEtime,fileFmt,outFdr,net,sta)
     #---------------- get channel list -------------------------
     fileChnList = []
     chns = []
@@ -209,7 +208,6 @@ staCorrection: If True, output waveforms use net and sta from the station file
                 pool.apply_async(cut_and_save_day_wf,
                                 args=(dataPths,idxa,idxb,trimBtime,trimEtime,fileFmt,outFdr,net,sta))
             else:
-                print("Here")
                 cut_and_save_day_wf(dataPths,idxa,idxb,trimBtime,trimEtime,fileFmt,outFdr,net,sta)
         if parallel:
             pool.close()
